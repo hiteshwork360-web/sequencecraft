@@ -1,0 +1,1362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SequenceCraft — AI Cold Email Writer</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0a0f;--surface:#111118;--surface2:#1a1a24;--surface3:#22223a;--border:#2a2a3a;--border2:#3a3a50;--accent:#7c5cfc;--accent2:#fc5c7d;--accent3:#5cf4fc;--text:#f0f0f8;--text2:#9090b0;--text3:#5a5a7a;--green:#4cfc8c;--yellow:#fce45c;--orange:#fc8c4c;--radius:14px;--radius-sm:8px;--radius-xs:6px;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
+nav{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;align-items:center;justify-content:space-between;padding:14px 40px;background:rgba(10,10,15,.92);backdrop-filter:blur(24px);border-bottom:1px solid var(--border);}
+.nav-logo{font-family:'Syne',sans-serif;font-weight:800;font-size:19px;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-.5px;}
+.nav-logo span{-webkit-text-fill-color:var(--accent3);}
+.nav-links{display:flex;gap:8px;align-items:center;}
+.nav-btn{background:none;border:1px solid var(--border);color:var(--text2);padding:7px 16px;border-radius:50px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;transition:all .2s;}
+.nav-btn:hover{border-color:var(--accent);color:var(--accent);}
+.nav-btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#fff;}
+.nav-btn.primary:hover{opacity:.85;}
+.hero{padding:120px 40px 50px;text-align:center;position:relative;overflow:hidden;}
+.hero::before{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);width:700px;height:350px;background:radial-gradient(ellipse,rgba(124,92,252,.13) 0%,transparent 70%);pointer-events:none;}
+.hero-tag{display:inline-flex;align-items:center;gap:8px;background:rgba(124,92,252,.1);border:1px solid rgba(124,92,252,.3);padding:5px 14px;border-radius:50px;font-size:11px;color:var(--accent);font-weight:600;margin-bottom:20px;letter-spacing:.6px;text-transform:uppercase;}
+.hero h1{font-family:'Syne',sans-serif;font-size:clamp(32px,5.5vw,64px);font-weight:800;line-height:1.05;letter-spacing:-2px;margin-bottom:18px;}
+.hero h1 em{font-style:normal;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.hero p{font-size:16px;color:var(--text2);max-width:520px;margin:0 auto 40px;line-height:1.7;}
+.container{max-width:1080px;margin:0 auto;padding:0 40px 80px;}
+.steps{display:flex;align-items:center;justify-content:center;gap:0;margin-bottom:44px;}
+.step{display:flex;align-items:center;gap:9px;font-size:12px;font-weight:500;}
+.step-num{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:'Syne',sans-serif;border:1px solid var(--border);color:var(--text3);background:var(--surface);transition:all .3s;}
+.step.active .step-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.step.done .step-num{background:var(--green);border-color:var(--green);color:var(--bg);}
+.step-label{color:var(--text3);transition:color .3s;}
+.step.active .step-label{color:var(--text);}
+.step.done .step-label{color:var(--green);}
+.step-line{width:50px;height:1px;background:var(--border);margin:0 6px;}
+.panel{display:none;animation:fadeUp .4s ease;}
+.panel.active{display:block;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:none;}}
+.input-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-bottom:28px;}
+.field-group{display:flex;flex-direction:column;gap:9px;}
+.field-group label{font-size:12px;font-weight:600;color:var(--text2);letter-spacing:.4px;text-transform:uppercase;}
+.field-group input,.field-group textarea{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:13px 16px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;outline:none;transition:border-color .2s;resize:vertical;}
+.field-group input:focus,.field-group textarea:focus{border-color:var(--accent);}
+.field-group textarea{min-height:90px;}
+.field-hint{font-size:11px;color:var(--text3);line-height:1.4;}
+.length-selector{display:flex;gap:10px;}
+.len-opt{flex:1;padding:11px 8px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);cursor:pointer;text-align:center;transition:all .2s;}
+.len-opt:hover{border-color:rgba(124,92,252,.4);}
+.len-opt.selected{border-color:var(--accent);background:rgba(124,92,252,.1);}
+.len-opt-icon{font-size:16px;margin-bottom:3px;}
+.len-opt-label{font-size:12px;font-weight:600;color:var(--text);}
+.len-opt-desc{font-size:10px;color:var(--text3);margin-top:2px;line-height:1.3;}
+.len-opt.selected .len-opt-label{color:var(--accent);}
+.source-toggle{display:flex;gap:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:20px;}
+.src-tab{flex:1;padding:11px 16px;text-align:center;cursor:pointer;font-size:13px;font-weight:500;color:var(--text2);transition:all .2s;border:none;background:none;font-family:'DM Sans',sans-serif;}
+.src-tab.active{background:var(--accent);color:#fff;}
+.src-tab:not(.active):hover{background:var(--surface2);color:var(--text);}
+.upload-zone{border:2px dashed var(--border);border-radius:var(--radius);padding:40px 24px;text-align:center;cursor:pointer;transition:all .25s;position:relative;background:var(--surface);}
+.upload-zone:hover,.upload-zone.dragover{border-color:var(--accent);background:rgba(124,92,252,.05);}
+.upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;z-index:2;}
+.upload-icon{font-size:34px;margin-bottom:12px;}
+.upload-title{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;margin-bottom:6px;}
+.upload-sub{font-size:12px;color:var(--text2);}
+.upload-formats{display:flex;gap:8px;justify-content:center;margin-top:14px;}
+.fmt-tag{font-size:10px;font-weight:600;padding:3px 10px;border-radius:50px;border:1px solid var(--border);color:var(--text3);letter-spacing:.4px;text-transform:uppercase;}
+.sheets-area{display:flex;flex-direction:column;gap:12px;}
+.sheets-row{display:flex;gap:10px;align-items:flex-end;}
+.sheets-connect-btn{padding:13px 20px;background:linear-gradient(135deg,#0f9d58,#34a853);border:none;border-radius:var(--radius-sm);color:#fff;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;transition:all .2s;}
+.sheets-connect-btn:hover{opacity:.9;}
+.prospect-preview{margin-top:22px;}
+.preview-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.preview-title{font-family:'Syne',sans-serif;font-weight:700;font-size:14px;}
+.preview-count{font-size:12px;color:var(--text2);}
+.prospect-table-wrap{overflow-x:auto;border-radius:var(--radius-sm);border:1px solid var(--border);}
+.prospect-table{width:100%;border-collapse:collapse;font-size:12px;}
+.prospect-table th{background:var(--surface2);color:var(--text2);padding:10px 14px;text-align:left;font-weight:600;letter-spacing:.3px;text-transform:uppercase;font-size:10px;border-bottom:1px solid var(--border);}
+.prospect-table td{padding:10px 14px;border-bottom:1px solid rgba(42,42,58,.5);color:var(--text2);}
+.prospect-table tr:last-child td{border-bottom:none;}
+.prospect-table tr:hover td{background:var(--surface2);color:var(--text);}
+.td-email{color:var(--accent3)!important;font-weight:500;}
+.td-link{color:var(--accent)!important;text-decoration:none;}
+.td-link:hover{text-decoration:underline;}
+.more-row td{color:var(--text3);font-style:italic;text-align:center;}
+.clear-list-btn{font-size:11px;color:var(--accent2);cursor:pointer;background:none;border:none;padding:0;font-family:'DM Sans',sans-serif;}
+.clear-list-btn:hover{text-decoration:underline;}
+.template-bar{display:flex;align-items:center;justify-content:space-between;background:rgba(92,244,252,.05);border:1px solid rgba(92,244,252,.15);border-radius:var(--radius-sm);padding:12px 16px;margin-bottom:16px;gap:12px;flex-wrap:wrap;}
+.template-bar-text{font-size:12px;color:var(--text2);line-height:1.4;}
+.template-bar-text strong{color:var(--accent3);font-weight:600;}
+.dl-btn{padding:7px 14px;background:rgba(92,244,252,.1);border:1px solid rgba(92,244,252,.25);border-radius:var(--radius-xs);color:var(--accent3);font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:'DM Sans',sans-serif;transition:all .2s;}
+.dl-btn:hover{background:rgba(92,244,252,.2);}
+.themes-title{font-family:'Syne',sans-serif;font-size:20px;font-weight:700;margin-bottom:6px;}
+.themes-sub{font-size:13px;color:var(--text2);margin-bottom:24px;}
+.themes-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:14px;margin-bottom:32px;}
+.theme-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 22px;cursor:pointer;transition:all .25s;position:relative;overflow:hidden;}
+.theme-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--card-color,var(--accent));transform:scaleX(0);transition:transform .3s;transform-origin:left;}
+.theme-card:hover{border-color:rgba(124,92,252,.3);transform:translateY(-2px);}
+.theme-card.selected{border-color:var(--card-color,var(--accent));background:var(--surface2);}
+.theme-card.selected::before{transform:scaleX(1);}
+.theme-header{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.theme-icon{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;background:rgba(255,255,255,.05);border:1px solid var(--border);}
+.theme-name{font-family:'Syne',sans-serif;font-weight:700;font-size:14px;}
+.theme-badge{margin-left:auto;font-size:9px;font-weight:700;padding:3px 9px;border-radius:50px;letter-spacing:.5px;text-transform:uppercase;}
+.theme-desc{font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:10px;}
+.theme-why{display:flex;align-items:flex-start;gap:7px;background:rgba(255,255,255,.03);border-radius:var(--radius-xs);padding:9px 12px;font-size:11px;color:var(--text2);line-height:1.5;}
+.theme-why::before{content:'💡';font-size:11px;flex-shrink:0;}
+.theme-check{position:absolute;top:12px;right:12px;width:20px;height:20px;border-radius:50%;background:var(--card-color,var(--accent));color:#fff;display:none;align-items:center;justify-content:center;font-size:10px;}
+.theme-card.selected .theme-check{display:flex;}
+.generate-btn{width:100%;padding:16px;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:var(--radius);color:#fff;font-family:'Syne',sans-serif;font-size:16px;font-weight:700;cursor:pointer;transition:all .2s;}
+.generate-btn:hover{transform:translateY(-2px);box-shadow:0 12px 40px rgba(124,92,252,.35);}
+.generate-btn:disabled{opacity:.4;cursor:not-allowed;transform:none;}
+.back-btn{background:none;border:1px solid var(--border);color:var(--text2);padding:11px 22px;border-radius:var(--radius);cursor:pointer;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;transition:all .2s;margin-bottom:18px;}
+.back-btn:hover{border-color:var(--text2);color:var(--text);}
+.error-box{background:rgba(252,92,125,.08);border:1px solid rgba(252,92,125,.3);border-radius:var(--radius-xs);padding:13px 16px;color:var(--accent2);font-size:13px;margin-bottom:18px;display:none;}
+/* loading */
+#loadingPanel{text-align:center;padding:80px 20px;}
+.loading-orb{width:72px;height:72px;border-radius:50%;background:conic-gradient(var(--accent),var(--accent2),var(--accent3),var(--accent));margin:0 auto 28px;animation:spin 2s linear infinite;position:relative;}
+.loading-orb::after{content:'';position:absolute;inset:4px;border-radius:50%;background:var(--bg);}
+@keyframes spin{to{transform:rotate(360deg);}}
+.loading-text{font-family:'Syne',sans-serif;font-size:22px;font-weight:700;margin-bottom:8px;}
+.loading-sub{color:var(--text2);font-size:14px;}
+.loading-prospect-name{color:var(--accent3);font-size:13px;font-weight:600;min-height:22px;margin-top:6px;}
+.loading-steps{display:flex;flex-direction:column;gap:7px;margin-top:28px;max-width:380px;margin-left:auto;margin-right:auto;}
+.loading-step{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface);border-radius:var(--radius-xs);font-size:12px;color:var(--text2);opacity:.35;transition:all .6s;}
+.loading-step.lit{opacity:1;color:var(--text);}
+.loading-step.lit .lstep-dot{background:var(--green);}
+.lstep-dot{width:7px;height:7px;border-radius:50%;background:var(--border);flex-shrink:0;}
+/* batch progress */
+.batch-progress{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 22px;margin-bottom:24px;}
+.bp-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+.bp-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;}
+.bp-fraction{font-size:12px;color:var(--text2);}
+.bp-bar-bg{height:6px;background:var(--border);border-radius:4px;overflow:hidden;}
+.bp-bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:4px;transition:width .5s ease;}
+.bp-statuses{display:flex;gap:7px;margin-top:12px;flex-wrap:wrap;}
+.bp-status{font-size:10px;padding:3px 10px;border-radius:50px;font-weight:600;}
+.bp-status.done{background:rgba(76,252,140,.12);color:var(--green);border:1px solid rgba(76,252,140,.2);}
+.bp-status.active{background:rgba(124,92,252,.12);color:var(--accent);border:1px solid rgba(124,92,252,.2);animation:blink .8s ease infinite alternate;}
+.bp-status.pending{background:var(--surface2);color:var(--text3);border:1px solid var(--border);}
+@keyframes blink{from{opacity:.6;}to{opacity:1;}}
+/* ── MANUAL ENTRY ── */
+.manual-col-headers{display:grid;grid-template-columns:1fr 1fr 1fr 1fr 36px;gap:8px;padding:0 4px 8px;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;}
+.manual-row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr 36px;gap:8px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;margin-bottom:8px;}
+.manual-row input{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:9px 10px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;width:100%;transition:border-color .2s;}
+.manual-row input:focus{border-color:var(--accent);}
+.manual-row input::placeholder{color:var(--text3);}
+.remove-row-btn{background:none;border:1px solid rgba(252,92,125,.3);color:var(--accent2);border-radius:6px;width:32px;height:32px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s;}
+.remove-row-btn:hover{background:rgba(252,92,125,.1);}
+.add-row-btn{background:none;border:2px dashed var(--border);color:var(--text2);padding:11px;border-radius:var(--radius-sm);cursor:pointer;width:100%;font-family:'DM Sans',sans-serif;font-size:13px;transition:all .2s;margin-top:4px;}
+.add-row-btn:hover{border-color:var(--accent);color:var(--accent);}
+/* ── WORKING OVERLAY ── */
+.wo-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:36px 32px;margin-bottom:28px;display:flex;flex-direction:column;gap:28px;}
+.wo-top{text-align:center;}
+.wo-orb-wrap{position:relative;width:64px;height:64px;margin:0 auto 18px;}
+.wo-orb{width:64px;height:64px;border-radius:50%;background:conic-gradient(var(--accent),var(--accent2),var(--accent3),var(--accent));animation:spin 1.8s linear infinite;position:relative;}
+.wo-orb::after{content:'';position:absolute;inset:5px;border-radius:50%;background:var(--surface);}
+.wo-headline{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;letter-spacing:-.3px;margin-bottom:6px;}
+.wo-prospect-name{font-size:13px;color:var(--accent3);font-weight:600;min-height:18px;}
+.wo-steps{display:flex;flex-direction:column;gap:6px;}
+.wo-step{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:var(--radius-xs);background:var(--surface2);border:1px solid var(--border);font-size:12px;color:var(--text3);transition:all .4s ease;}
+.wo-step.done{color:var(--green);border-color:rgba(76,252,140,.25);background:rgba(76,252,140,.06);}
+.wo-step.active{color:var(--text);border-color:rgba(124,92,252,.35);background:rgba(124,92,252,.07);animation:stepPulse 1.2s ease infinite alternate;}
+.wo-step-dot{width:7px;height:7px;border-radius:50%;background:var(--border);flex-shrink:0;transition:all .4s;}
+.wo-step.done .wo-step-dot{background:var(--green);}
+.wo-step.active .wo-step-dot{background:var(--accent);box-shadow:0 0 6px var(--accent);}
+.wo-step-text{flex:1;}
+.wo-step-check{margin-left:auto;font-size:11px;}
+@keyframes stepPulse{from{opacity:.75;}to{opacity:1;}}
+.wo-batch{display:flex;flex-direction:column;gap:10px;}
+.wo-batch-header{display:flex;justify-content:space-between;align-items:center;}
+.wo-batch-label{font-size:12px;color:var(--text2);font-weight:500;}
+.wo-batch-frac{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);}
+.wo-bar-bg{height:5px;background:var(--border);border-radius:4px;overflow:hidden;}
+.wo-bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2),var(--accent3));background-size:200%;animation:barShimmer 2s linear infinite;border-radius:4px;transition:width .6s ease;}
+@keyframes barShimmer{0%{background-position:0%;}100%{background-position:200%;}}
+.wo-statuses{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px;}
+.wo-status{font-size:10px;padding:3px 10px;border-radius:50px;font-weight:600;letter-spacing:.2px;}
+.wo-status.done{background:rgba(76,252,140,.12);color:var(--green);border:1px solid rgba(76,252,140,.2);}
+.wo-status.active{background:rgba(124,92,252,.15);color:var(--accent);border:1px solid rgba(124,92,252,.3);animation:blink .7s ease infinite alternate;}
+.wo-status.pending{background:var(--surface2);color:var(--text3);border:1px solid var(--border);}
+.wo-ticker{text-align:center;font-size:12px;color:var(--text3);font-style:italic;padding-top:4px;min-height:18px;transition:opacity .5s;}
+/* prospect nav */
+.prospect-nav{display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 22px;margin-bottom:22px;gap:16px;flex-wrap:wrap;}
+.pnav-info{display:flex;flex-direction:column;gap:5px;min-width:0;}
+.pnav-persona-name{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;letter-spacing:-.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pnav-persona-meta{font-size:11px;color:var(--text2);display:flex;gap:10px;flex-wrap:wrap;}
+.pnav-meta-item a{color:var(--accent);text-decoration:none;font-size:11px;}
+.pnav-meta-item a:hover{text-decoration:underline;}
+.pnav-arrows{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.pnav-counter{font-size:12px;color:var(--text2);white-space:nowrap;}
+.arr-btn{width:36px;height:36px;border-radius:var(--radius-xs);background:var(--surface2);border:1px solid var(--border);color:var(--text2);cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;transition:all .2s;}
+.arr-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent);background:rgba(124,92,252,.1);}
+.arr-btn:disabled{opacity:.3;cursor:not-allowed;}
+.pnav-dots{display:flex;gap:5px;align-items:center;}
+.pnav-dot{width:7px;height:7px;border-radius:50%;background:var(--border);cursor:pointer;transition:all .25s;}
+.pnav-dot.active{background:var(--accent);width:20px;border-radius:4px;}
+.pnav-dot:hover:not(.active){background:var(--text3);}
+/* intel */
+.intel-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:20px;overflow:hidden;}
+.intel-header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;cursor:pointer;border-bottom:1px solid transparent;transition:border-color .2s;user-select:none;}
+.intel-panel.open .intel-header{border-bottom-color:var(--border);}
+.intel-header-left{display:flex;align-items:center;gap:10px;}
+.intel-pulse{width:8px;height:8px;border-radius:50%;background:var(--green);position:relative;flex-shrink:0;}
+.intel-pulse::after{content:'';position:absolute;inset:-3px;border-radius:50%;background:rgba(76,252,140,.3);animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(1.6);opacity:0;}}
+.intel-title-block .intel-title{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;}
+.intel-title-block .intel-sub{font-size:11px;color:var(--text3);margin-top:2px;}
+.intel-toggle-icon{font-size:11px;color:var(--text3);transition:transform .3s;}
+.intel-panel.open .intel-toggle-icon{transform:rotate(180deg);}
+.intel-body{display:none;padding:18px 20px;}
+.intel-panel.open .intel-body{display:block;}
+.intel-chips{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px;}
+.intel-chip{display:flex;align-items:center;gap:5px;padding:4px 11px;border-radius:50px;font-size:10px;font-weight:600;border:1px solid;}
+.intel-chip.news{background:rgba(252,228,92,.08);border-color:rgba(252,228,92,.25);color:var(--yellow);}
+.intel-chip.linkedin{background:rgba(92,244,252,.08);border-color:rgba(92,244,252,.25);color:var(--accent3);}
+.intel-chip.website{background:rgba(124,92,252,.08);border-color:rgba(124,92,252,.25);color:var(--accent);}
+.intel-chip.social{background:rgba(252,140,76,.08);border-color:rgba(252,140,76,.25);color:var(--orange);}
+.intel-items{display:flex;flex-direction:column;gap:8px;}
+.intel-item{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--surface2);border-radius:var(--radius-xs);font-size:12px;line-height:1.5;}
+.intel-item-icon{font-size:14px;flex-shrink:0;margin-top:1px;}
+.intel-item-text{color:var(--text2);}
+.intel-item-text strong{color:var(--text);font-weight:600;}
+.intel-item-source{font-size:10px;color:var(--text3);margin-top:3px;}
+/* results */
+.results-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:22px;gap:16px;flex-wrap:wrap;}
+.results-meta h2{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;letter-spacing:-.5px;}
+.results-meta p{color:var(--text2);font-size:13px;margin-top:4px;}
+.results-actions{display:flex;gap:8px;flex-shrink:0;}
+.action-btn{padding:9px 18px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text2);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;cursor:pointer;transition:all .2s;}
+.action-btn:hover{border-color:var(--accent);color:var(--accent);}
+.action-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+.action-btn.primary:hover{background:#6a4aeb;color:#fff;}
+/* email cards */
+.email-sequence{display:flex;flex-direction:column;gap:16px;}
+.email-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:border-color .2s;}
+.email-card:hover{border-color:rgba(124,92,252,.25);}
+.email-card-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid transparent;cursor:pointer;user-select:none;transition:border-color .2s;}
+.email-card.open .email-card-header{border-bottom-color:var(--border);}
+.email-card-left{display:flex;align-items:center;gap:12px;}
+.email-num{width:30px;height:30px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#fff;flex-shrink:0;}
+.email-meta-title{font-weight:600;font-size:14px;}
+.email-meta-sub{font-size:11px;color:var(--text3);margin-top:1px;}
+.email-badges{display:flex;gap:7px;margin-left:auto;margin-right:14px;}
+.badge{font-size:9px;font-weight:700;padding:3px 9px;border-radius:50px;letter-spacing:.4px;text-transform:uppercase;}
+.badge.thread{background:rgba(92,244,252,.12);color:var(--accent3);border:1px solid rgba(92,244,252,.25);}
+.badge.standalone{background:rgba(76,252,140,.12);color:var(--green);border:1px solid rgba(76,252,140,.25);}
+.badge.day{background:rgba(124,92,252,.12);color:var(--accent);border:1px solid rgba(124,92,252,.25);}
+.chevron{color:var(--text3);font-size:11px;transition:transform .3s;}
+.email-card.open .chevron{transform:rotate(180deg);}
+.email-card-body{display:none;padding:20px;}
+.email-card.open .email-card-body{display:block;}
+.subject-line{background:rgba(124,92,252,.08);border:1px solid rgba(124,92,252,.2);border-radius:var(--radius-xs);padding:11px 14px;margin-bottom:16px;}
+.subject-label{font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:var(--accent);font-weight:700;margin-bottom:3px;}
+.subject-text{font-size:14px;font-weight:600;color:var(--text);}
+.thread-note{display:flex;align-items:flex-start;gap:9px;border-radius:var(--radius-xs);padding:10px 14px;margin-bottom:16px;font-size:12px;line-height:1.5;}
+.thread-note.is-thread{background:rgba(92,244,252,.06);border:1px solid rgba(92,244,252,.15);color:var(--text2);}
+.thread-note.is-standalone{background:rgba(76,252,140,.06);border:1px solid rgba(76,252,140,.15);color:var(--text2);}
+.email-body{background:var(--surface2);border-radius:var(--radius-xs);padding:20px;font-size:13px;line-height:1.9;color:var(--text2);white-space:pre-wrap;font-family:'DM Sans',sans-serif;border:1px solid var(--border);}
+.email-footer{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);flex-wrap:wrap;gap:8px;}
+.email-cta-note{font-size:11px;color:var(--text3);display:flex;align-items:center;gap:5px;}
+.email-cta-note::before{content:'🎯';}
+.copy-btn{background:none;border:1px solid var(--border);color:var(--text2);padding:6px 14px;border-radius:var(--radius-xs);cursor:pointer;font-size:11px;font-weight:500;transition:all .2s;font-family:'DM Sans',sans-serif;}
+.copy-btn:hover{border-color:var(--accent);color:var(--accent);}
+.copy-btn.copied{border-color:var(--green);color:var(--green);}
+/* modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:300;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .3s;backdrop-filter:blur(8px);}
+.modal-overlay.open{opacity:1;pointer-events:all;}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:36px;max-width:480px;width:90%;transform:translateY(20px) scale(.97);transition:transform .3s;}
+.modal-overlay.open .modal{transform:none;}
+.modal h3{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;margin-bottom:5px;}
+.modal p{color:var(--text2);font-size:13px;margin-bottom:22px;}
+.rating-row{display:flex;gap:8px;margin-bottom:20px;}
+.star-btn{width:40px;height:40px;border-radius:9px;background:var(--surface2);border:1px solid var(--border);cursor:pointer;font-size:18px;transition:all .2s;display:flex;align-items:center;justify-content:center;}
+.star-btn:hover,.star-btn.active{background:rgba(252,228,92,.1);border-color:var(--yellow);}
+.modal textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;resize:vertical;min-height:90px;outline:none;margin-bottom:18px;}
+.modal textarea:focus{border-color:var(--accent);}
+.modal-actions{display:flex;gap:10px;}
+.modal-cancel{flex:1;background:none;border:1px solid var(--border);color:var(--text2);padding:11px;border-radius:var(--radius-sm);cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;transition:all .2s;}
+.modal-cancel:hover{border-color:var(--text2);}
+.modal-submit{flex:2;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#fff;padding:11px;border-radius:var(--radius-sm);cursor:pointer;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;}
+.thank-you{text-align:center;padding:16px 0;}
+.thank-you .ty-icon{font-size:48px;margin-bottom:14px;}
+.thank-you h4{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;margin-bottom:6px;}
+.thank-you p{color:var(--text2);font-size:13px;}
+@media(max-width:680px){nav{padding:12px 18px;}.hero{padding:90px 18px 36px;}.container{padding:0 18px 60px;}.input-grid{grid-template-columns:1fr;}.themes-grid{grid-template-columns:1fr;}.results-header{flex-direction:column;}.pnav-dots{display:none;}.length-selector{flex-direction:column;}}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo">Sequence<span>Craft</span></div>
+  <div class="nav-links">
+    <button class="nav-btn" onclick="resetTool()">↩ New</button>
+    <button class="nav-btn primary" onclick="openFeedback()">💬 Feedback</button>
+  </div>
+</nav>
+
+<div class="hero" id="heroSection">
+  <div class="hero-tag">◆ AI Ghost Writer × Research Intelligence</div>
+  <h1>Cold Emails That<br><em>Know Your Prospect</em></h1>
+  <p>Upload a list or connect Google Sheets. We research each prospect — news, LinkedIn signals, websites — then write hyper-personalised sequences engineered for replies and demos.</p>
+</div>
+
+<div class="container">
+
+  <div class="steps" id="stepIndicator">
+    <div class="step active" id="s1"><div class="step-num">1</div><div class="step-label">Your Setup</div></div>
+    <div class="step-line"></div>
+    <div class="step" id="s2"><div class="step-num">2</div><div class="step-label">Prospects</div></div>
+    <div class="step-line"></div>
+    <div class="step" id="s3"><div class="step-num">3</div><div class="step-label">Theme</div></div>
+    <div class="step-line"></div>
+    <div class="step" id="s4"><div class="step-num">4</div><div class="step-label">Sequences</div></div>
+  </div>
+
+  <!-- PANEL 1: SELLER SETUP -->
+  <div class="panel active" id="panel1">
+    <div class="input-grid">
+      <div class="field-group">
+        <label>Your Company Website</label>
+        <input type="url" id="websiteInput" placeholder="https://yourcompany.com"/>
+        <div class="field-hint">We'll analyse your positioning, product, and competitive edge</div>
+      </div>
+      <div class="field-group">
+        <label>Your Product / Service</label>
+        <textarea id="productInput" placeholder="e.g. AI-powered sales engagement platform helping SDRs book 3× more meetings without extra headcount..."></textarea>
+      </div>
+      <div class="field-group">
+        <label>Top Competitors (optional)</label>
+        <input type="text" id="competitorInput" placeholder="e.g. Outreach, Salesloft, Apollo"/>
+        <div class="field-hint">Unlocks the Competitor Roast theme</div>
+      </div>
+      <div class="field-group">
+        <label>Preferred Email Length</label>
+        <div class="length-selector">
+          <div class="len-opt selected" id="len_short" onclick="selectLength('short')">
+            <div class="len-opt-icon">⚡</div>
+            <div class="len-opt-label">Short</div>
+            <div class="len-opt-desc">3–5 punchy lines. Highest cold reply rate.</div>
+          </div>
+          <div class="len-opt" id="len_medium" onclick="selectLength('medium')">
+            <div class="len-opt-icon">📝</div>
+            <div class="len-opt-label">Medium</div>
+            <div class="len-opt-desc">8–12 lines. Context + hook + CTA.</div>
+          </div>
+          <div class="len-opt" id="len_long" onclick="selectLength('long')">
+            <div class="len-opt-icon">📄</div>
+            <div class="len-opt-label">Long</div>
+            <div class="len-opt-desc">15–20 lines. Story-led, deep proof.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="inputError" class="error-box">Please fill in your website and product description to continue.</div>
+    <button class="generate-btn" onclick="goToProspects()">Continue → Add Prospects</button>
+  </div>
+
+  <!-- PANEL 2: PROSPECTS -->
+  <div class="panel" id="panel2">
+    <button class="back-btn" onclick="goBack(1)">← Back</button>
+
+    <div class="template-bar">
+      <div class="template-bar-text">
+        <strong>Add prospects below</strong> — only Email is required. Company website &amp; LinkedIn links make emails much more personalised.
+      </div>
+      <button class="dl-btn" onclick="downloadTemplate()">⬇ Download CSV Template</button>
+    </div>
+
+    <!-- Source tabs -->
+    <div class="source-toggle">
+      <button class="src-tab active" id="tab_manual" onclick="switchSource('manual')">✏️ Add Manually</button>
+      <button class="src-tab" id="tab_upload" onclick="switchSource('upload')">📂 Upload CSV / Excel</button>
+      <button class="src-tab" id="tab_sheets" onclick="switchSource('sheets')">🟢 Google Sheets</button>
+    </div>
+
+    <!-- Manual entry -->
+    <div id="src_manual">
+      <div class="manual-col-headers">
+        <div>Email *</div>
+        <div>Company Website</div>
+        <div>Persona LinkedIn</div>
+        <div>Company LinkedIn</div>
+        <div></div>
+      </div>
+      <div id="manualRows"></div>
+      <button onclick="addManualRow()" class="add-row-btn">+ Add Another Prospect</button>
+    </div>
+
+    <!-- Upload -->
+    <div id="src_upload" style="display:none">
+      <div class="upload-zone" id="uploadZone" ondragover="handleDrag(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+        <input type="file" accept=".csv,.xlsx,.xls" id="fileInput" style="position:absolute;inset:0;opacity:0;cursor:pointer;z-index:2;" onchange="handleFileSelect(event)"/>
+        <div class="upload-icon">📋</div>
+        <div class="upload-title">Drop your prospect list here</div>
+        <div class="upload-sub">or click to browse — CSV, XLSX, XLS accepted</div>
+        <div class="upload-formats">
+          <span class="fmt-tag">CSV</span><span class="fmt-tag">XLSX</span><span class="fmt-tag">XLS</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sheets -->
+    <div id="src_sheets" style="display:none">
+      <div class="sheets-area">
+        <div class="field-group">
+          <label>Google Sheets URL</label>
+          <div class="sheets-row">
+            <div class="field-group" style="margin:0;flex:1">
+              <input type="url" id="sheetsUrl" placeholder="https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/..."/>
+            </div>
+            <button class="sheets-connect-btn" onclick="loadGoogleSheet()">🟢 Load Sheet</button>
+          </div>
+          <div class="field-hint">Sheet must be set to "Anyone with the link can view". Same column format as the CSV template.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Preview table -->
+    <div id="prospectPreview" style="display:none" class="prospect-preview">
+      <div class="preview-header">
+        <div class="preview-title">✦ Prospect List</div>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <span class="preview-count" id="previewCount"></span>
+          <button class="clear-list-btn" onclick="clearProspects()">✕ Clear</button>
+        </div>
+      </div>
+      <div class="prospect-table-wrap">
+        <table class="prospect-table">
+          <thead><tr><th>#</th><th>Email</th><th>Company</th><th>Persona LI</th><th>Company LI</th></tr></thead>
+          <tbody id="prospectTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="prospectError" class="error-box" style="margin-top:16px;">Please add at least one prospect with a valid email to continue.</div>
+    <button class="generate-btn" style="margin-top:20px" onclick="goToThemes()">Continue → Pick Theme</button>
+  </div>
+
+  <!-- PANEL 3: THEME -->
+  <div class="panel" id="panel3">
+    <button class="back-btn" onclick="goBack(2)">← Back</button>
+    <div class="themes-title">Choose Your Email Theme</div>
+    <div class="themes-sub">One theme, applied across all prospects — but each sequence is personalised from research.</div>
+    <div class="themes-grid" id="themesGrid"></div>
+    <div id="themeError" class="error-box">Please select a theme to continue.</div>
+    <button class="generate-btn" onclick="startGeneration()">✦ Research & Generate All Sequences</button>
+  </div>
+
+  <!-- LOADING -->
+  <div class="panel" id="loadingPanel">
+    <div class="loading-orb"></div>
+    <div class="loading-text" id="loadingTitle">Researching prospects...</div>
+    <div class="loading-sub">Scanning news, LinkedIn signals & company websites</div>
+    <div class="loading-prospect-name" id="loadingProspectName"></div>
+    <div class="loading-steps">
+      <div class="loading-step" id="ls1"><div class="lstep-dot"></div>Fetching company website & recent news</div>
+      <div class="loading-step" id="ls2"><div class="lstep-dot"></div>Scanning LinkedIn activity (last 3 months)</div>
+      <div class="loading-step" id="ls3"><div class="lstep-dot"></div>Identifying pain points & personalisation hooks</div>
+      <div class="loading-step" id="ls4"><div class="lstep-dot"></div>Writing subject lines engineered for opens</div>
+      <div class="loading-step" id="ls5"><div class="lstep-dot"></div>Crafting personalised 5-email sequence</div>
+    </div>
+  </div>
+
+  <!-- PANEL 4: RESULTS -->
+  <div class="panel" id="panel4">
+
+    <!-- ══ WORKING STATE OVERLAY ══ -->
+    <div id="workingOverlay" style="display:none">
+      <div class="wo-card">
+        <div class="wo-top">
+          <div class="wo-orb-wrap">
+            <div class="wo-orb"></div>
+          </div>
+          <div class="wo-headline" id="woHeadline">Starting research…</div>
+          <div class="wo-prospect-name" id="woProspectName"></div>
+        </div>
+        <div class="wo-steps" id="woSteps">
+          <div class="wo-step" id="wos1"><span class="wo-step-dot"></span><span class="wo-step-text">Fetching company website &amp; recent news</span></div>
+          <div class="wo-step" id="wos2"><span class="wo-step-dot"></span><span class="wo-step-text">Scanning LinkedIn activity (last 3 months)</span></div>
+          <div class="wo-step" id="wos3"><span class="wo-step-dot"></span><span class="wo-step-text">Identifying pain points &amp; personalisation hooks</span></div>
+          <div class="wo-step" id="wos4"><span class="wo-step-dot"></span><span class="wo-step-text">Writing subject lines engineered for opens</span></div>
+          <div class="wo-step" id="wos5"><span class="wo-step-dot"></span><span class="wo-step-text">Crafting personalised 5-email sequence</span></div>
+        </div>
+        <div class="wo-batch">
+          <div class="wo-batch-header">
+            <span class="wo-batch-label">Overall progress</span>
+            <span class="wo-batch-frac" id="woBatchFrac">0 / 0</span>
+          </div>
+          <div class="wo-bar-bg"><div class="wo-bar-fill" id="woBarFill" style="width:0%"></div></div>
+          <div class="wo-statuses" id="woStatuses"></div>
+        </div>
+        <div class="wo-ticker" id="woTicker">Warming up the research engine…</div>
+      </div>
+    </div>
+
+    <div class="prospect-nav" id="prospectNav">
+      <div class="pnav-info">
+        <div class="pnav-persona-name" id="pnavName">—</div>
+        <div class="pnav-persona-meta" id="pnavMeta"></div>
+      </div>
+      <div class="pnav-arrows">
+        <div class="pnav-dots" id="pnavDots"></div>
+        <span class="pnav-counter" id="pnavCounter">1 / 1</span>
+        <button class="arr-btn" id="prevBtn" onclick="navigateProspect(-1)" disabled title="Previous prospect">◀</button>
+        <button class="arr-btn" id="nextBtn" onclick="navigateProspect(1)" disabled title="Next prospect">▶</button>
+      </div>
+    </div>
+
+    <div class="intel-panel" id="intelPanel">
+      <div class="intel-header" onclick="toggleIntel()">
+        <div class="intel-header-left">
+          <div class="intel-pulse"></div>
+          <div class="intel-title-block">
+            <div class="intel-title">🔎 Research Intelligence Used</div>
+            <div class="intel-sub" id="intelSub">Signals from the last 3 months</div>
+          </div>
+        </div>
+        <div class="intel-toggle-icon">▼</div>
+      </div>
+      <div class="intel-body">
+        <div class="intel-chips" id="intelChips"></div>
+        <div class="intel-items" id="intelItems"></div>
+      </div>
+    </div>
+
+    <div class="results-header">
+      <div class="results-meta">
+        <h2>5-Email Sequence ✦</h2>
+        <p id="resultsMeta">Personalised and ready to send.</p>
+      </div>
+      <div class="results-actions">
+        <button class="action-btn" id="copyAllBtn" onclick="copyAll()">📋 Copy All</button>
+        <button class="action-btn primary" onclick="openFeedback()">Rate Sequence</button>
+      </div>
+    </div>
+    <div class="email-sequence" id="emailSequence"></div>
+  </div>
+
+</div>
+
+<!-- FEEDBACK MODAL -->
+<div class="modal-overlay" id="feedbackModal">
+  <div class="modal">
+    <div id="feedbackForm">
+      <h3>How'd we do? 🎯</h3>
+      <p>Your feedback makes every sequence sharper. 30 seconds.</p>
+      <div class="rating-row">
+        <button class="star-btn" onclick="setRating(1)">⭐</button>
+        <button class="star-btn" onclick="setRating(2)">⭐</button>
+        <button class="star-btn" onclick="setRating(3)">⭐</button>
+        <button class="star-btn" onclick="setRating(4)">⭐</button>
+        <button class="star-btn" onclick="setRating(5)">⭐</button>
+      </div>
+      <textarea id="feedbackText" placeholder="What worked? What missed? Tone, angle, structure?"></textarea>
+      <div class="modal-actions">
+        <button class="modal-cancel" onclick="closeFeedback()">Cancel</button>
+        <button class="modal-submit" onclick="submitFeedback()">Submit →</button>
+      </div>
+    </div>
+    <div id="feedbackThanks" class="thank-you" style="display:none">
+      <div class="ty-icon">🙌</div>
+      <h4>Thanks a lot!</h4>
+      <p>Now go send these — your pipeline won't fill itself.</p>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+// ═══════════════════════ STATE ═══════════════════════
+let selectedLength = 'short';
+let selectedTheme  = null;
+let prospects      = [];
+let allResults     = [];
+let currentIdx     = 0;
+let currentRating  = 0;
+let activeSource   = 'manual';
+let manualRowCount = 0;
+
+// ═══════════════════════ THEMES ══════════════════════
+const THEMES = [
+  {id:'storytelling',name:'The Origin Story',icon:'📖',color:'#7c5cfc',
+   badge:'High Trust',badgeStyle:'background:rgba(124,92,252,.15);color:#a080ff;border:1px solid rgba(124,92,252,.3)',
+   desc:'Open with a narrative — founder pain, customer transformation, or an industry inflection moment.',
+   why:'Stories bypass skepticism. When a prospect reads a story that mirrors their exact pain, they lean in instead of deleting.',
+   prompt:'Use powerful storytelling. Start with a relatable story or founder origin. Build trust before pitching.'},
+  {id:'competitor_roast',name:'Competitor Roast',icon:'🔥',color:'#fc5c7d',
+   badge:'Bold Move',badgeStyle:'background:rgba(252,92,125,.15);color:#fc5c7d;border:1px solid rgba(252,92,125,.3)',
+   desc:'Directly call out what the competition gets wrong. Position your product as the obvious upgrade.',
+   why:'Bold positioning creates instant differentiation. Prospects already frustrated with competitors will feel seen immediately.',
+   prompt:'Confident, slightly edgy competitor comparison. Specific about what competitors get wrong. Position as the clear upgrade.'},
+  {id:'unbelievable_offer',name:'The Jaw-Drop Offer',icon:'🎁',color:'#fce45c',
+   badge:'High Response',badgeStyle:'background:rgba(252,228,92,.15);color:#fce45c;border:1px solid rgba(252,228,92,.3)',
+   desc:'Lead with an offer so specific and generous, ignoring it feels foolish. Audit, teardown, bold guarantee.',
+   why:'When the perceived value of the offer exceeds the cost of replying, the math becomes simple for the prospect.',
+   prompt:'Lead with incredibly specific, generous, low-risk offer. Risk reversal. Scarcity. Make saying no feel foolish.'},
+  {id:'problem_agitate',name:'Problem Agitator',icon:'⚡',color:'#fc8c4c',
+   badge:'Proven',badgeStyle:'background:rgba(252,140,76,.15);color:#fc8c4c;border:1px solid rgba(252,140,76,.3)',
+   desc:'Diagnose a specific pain the prospect lives with daily. Rub it in. Then position your product as the relief.',
+   why:'Prospects don\'t buy features — they buy escape from pain. Naming their exact problem makes you feel like a mind reader.',
+   prompt:'Use PAS (Problem-Agitate-Solution). Surgical about a specific pain. Show you understand their world deeply.'},
+  {id:'social_proof',name:'The Name Drop',icon:'🏆',color:'#4cfc8c',
+   badge:'Trust Builder',badgeStyle:'background:rgba(76,252,140,.15);color:#4cfc8c;border:1px solid rgba(76,252,140,.3)',
+   desc:'Open with a specific result from a similar company. Numbers, outcomes, timeframes. Let customers do the convincing.',
+   why:'Social proof from a peer company is more persuasive than any feature list. Competitors winning with you is irresistible.',
+   prompt:'Lead with specific results, case studies, or social proof from similar companies. Real numbers. Make the prospect envious.'},
+];
+
+function renderThemes(){
+  document.getElementById('themesGrid').innerHTML = THEMES.map(t=>`
+    <div class="theme-card" id="theme_${t.id}" style="--card-color:${t.color}" onclick="selectTheme('${t.id}')">
+      <div class="theme-header">
+        <div class="theme-icon">${t.icon}</div>
+        <div class="theme-name">${t.name}</div>
+        <div class="theme-badge" style="${t.badgeStyle}">${t.badge}</div>
+      </div>
+      <div class="theme-desc">${t.desc}</div>
+      <div class="theme-why">${t.why}</div>
+      <div class="theme-check">✓</div>
+    </div>`).join('');
+}
+renderThemes();
+
+function selectTheme(id){
+  selectedTheme=id;
+  document.querySelectorAll('.theme-card').forEach(c=>c.classList.remove('selected'));
+  document.getElementById('theme_'+id).classList.add('selected');
+  document.getElementById('themeError').style.display='none';
+}
+
+// ═══════════════════════ NAV ═════════════════════════
+function showPanel(n){
+  ['panel1','panel2','panel3','loadingPanel','panel4'].forEach(p=>document.getElementById(p).classList.remove('active'));
+  const map={1:'panel1',2:'panel2',3:'panel3',99:'loadingPanel',4:'panel4'};
+  document.getElementById(map[n]).classList.add('active');
+  document.getElementById('stepIndicator').style.display = n===99?'none':'flex';
+  for(let i=1;i<=4;i++){
+    const s=document.getElementById('s'+i); if(!s) continue;
+    s.classList.remove('active','done');
+    if(i<n&&n!==99) s.classList.add('done');
+    else if(i===n) s.classList.add('active');
+  }
+  document.getElementById('heroSection').style.display = n===1?'block':'none';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function goBack(n){showPanel(n);}
+
+function resetTool(){
+  prospects=[]; allResults=[]; currentIdx=0;
+  selectedTheme=null; selectedLength='short';
+  document.querySelectorAll('.theme-card').forEach(c=>c.classList.remove('selected'));
+  document.querySelectorAll('.len-opt').forEach(l=>l.classList.remove('selected'));
+  document.getElementById('len_short').classList.add('selected');
+  clearProspects();
+  showPanel(1);
+}
+
+function selectLength(len){
+  selectedLength=len;
+  ['short','medium','long'].forEach(l=>document.getElementById('len_'+l).classList.toggle('selected',l===len));
+}
+
+function goToProspects(){
+  const w=document.getElementById('websiteInput').value.trim();
+  const pr=document.getElementById('productInput').value.trim();
+  if(!w||!pr){document.getElementById('inputError').style.display='block';return;}
+  document.getElementById('inputError').style.display='none';
+  showPanel(2);
+}
+
+function goToThemes(){
+  // For manual tab: collect fresh. For upload/sheets: prospects already populated.
+  // Either way, also collect any manual rows to catch both scenarios.
+  if(activeSource === 'manual'){
+    prospects = []; // reset before collecting manual rows
+  }
+  collectManualRows();
+  if(prospects.length===0){
+    document.getElementById('prospectError').style.display='block';
+    return;
+  }
+  document.getElementById('prospectError').style.display='none';
+  showPanel(3);
+}
+
+// ═══════════════════════ SOURCE ══════════════════════
+function switchSource(src){
+  activeSource=src;
+  ['upload','sheets','manual'].forEach(s=>{
+    document.getElementById('src_'+s).style.display=s===src?'block':'none';
+    document.getElementById('tab_'+s).classList.toggle('active',s===src);
+  });
+}
+
+// ═══════════════════════ FILE UPLOAD ═════════════════
+function handleDrag(e){e.preventDefault();document.getElementById('uploadZone').classList.add('dragover');}
+function handleDragLeave(){document.getElementById('uploadZone').classList.remove('dragover');}
+function handleDrop(e){
+  e.preventDefault();
+  document.getElementById('uploadZone').classList.remove('dragover');
+  const file=e.dataTransfer.files[0];
+  if(file) processFile(file);
+}
+function handleFileSelect(e){if(e.target.files[0]) processFile(e.target.files[0]);}
+
+function processFile(file){
+  const name=file.name.toLowerCase();
+  if(name.endsWith('.csv')){
+    const r=new FileReader(); r.onload=e=>parseCSV(e.target.result); r.readAsText(file);
+  } else if(name.endsWith('.xlsx')||name.endsWith('.xls')){
+    const r=new FileReader();
+    r.onload=e=>{
+      const wb=XLSX.read(e.target.result,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      parseCSV(XLSX.utils.sheet_to_csv(ws));
+    };
+    r.readAsArrayBuffer(file);
+  } else { alert('Please upload a CSV or Excel file.'); }
+}
+
+function parseCSV(text){
+  const lines=text.trim().split('\n').filter(l=>l.trim());
+  if(lines.length<2){alert('File appears empty.');return;}
+  const rawHeaders=lines[0].split(',');
+  const headers=rawHeaders.map(h=>h.trim().toLowerCase().replace(/[^a-z_]/g,'_'));
+  const find=(kws)=>headers.findIndex(h=>kws.some(k=>h.includes(k)));
+  const eI=find(['email']); const cwI=find(['company_website','companywebsite','company_url']);
+  const plI=find(['persona_linkedin','personal_linkedin','linkedin_persona','person_linkedin']);
+  const clI=find(['company_linkedin','companylinkedin']);
+  if(eI===-1){alert('No "email" column found. Please use the template.');return;}
+  prospects=[];
+  for(let i=1;i<lines.length;i++){
+    const cols=splitCSV(lines[i]);
+    const email=(cols[eI]||'').trim().replace(/"/g,'');
+    if(!email||!email.includes('@')) continue;
+    prospects.push({
+      email,
+      company_website:cwI>=0?(cols[cwI]||'').trim().replace(/"/g,''):'',
+      persona_linkedin:plI>=0?(cols[plI]||'').trim().replace(/"/g,''):'',
+      company_linkedin:clI>=0?(cols[clI]||'').trim().replace(/"/g,''):'',
+    });
+  }
+  if(prospects.length===0){alert('No valid email rows found. Check the file format.');return;}
+  renderProspectTable();
+}
+
+function splitCSV(line){
+  const r=[];let c='';let q=false;
+  for(let i=0;i<line.length;i++){
+    const ch=line[i];
+    if(ch==='"'){q=!q;}
+    else if(ch===','&&!q){r.push(c);c='';}
+    else{c+=ch;}
+  }
+  r.push(c); return r;
+}
+
+// ═══════════════════════ GOOGLE SHEETS ═══════════════
+async function loadGoogleSheet(){
+  const url=document.getElementById('sheetsUrl').value.trim();
+  if(!url){alert('Please enter a Google Sheets URL.');return;}
+  const match=url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if(!match){alert('Invalid Google Sheets URL. Copy the full URL from your browser.');return;}
+  const sheetId=match[1];
+  const csvUrl=`https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
+  try{
+    const resp=await fetch(csvUrl);
+    if(!resp.ok) throw new Error('Sheet not accessible. Set sharing to "Anyone with link can view".');
+    const text=await resp.text();
+    parseCSV(text);
+  } catch(e){alert('Error: '+e.message);}
+}
+
+// ═══════════════════════ MANUAL ROWS ═════════════════
+function addManualRow(){
+  manualRowCount++;
+  const id = manualRowCount;
+  const row = document.createElement('div');
+  row.className = 'manual-row';
+  row.setAttribute('data-row-id', id);
+
+  const fields = [
+    {ph:'email@company.com', key:'email'},
+    {ph:'https://company.com', key:'company_website'},
+    {ph:'https://linkedin.com/in/...', key:'persona_linkedin'},
+    {ph:'https://linkedin.com/company/...', key:'company_linkedin'},
+  ];
+
+  fields.forEach(f => {
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.placeholder = f.ph;
+    inp.setAttribute('data-field', f.key);
+    row.appendChild(inp);
+  });
+
+  const btn = document.createElement('button');
+  btn.className = 'remove-row-btn';
+  btn.textContent = '✕';
+  btn.title = 'Remove';
+  btn.type = 'button';
+  btn.onclick = () => { row.remove(); };
+  row.appendChild(btn);
+
+  document.getElementById('manualRows').appendChild(row);
+}
+
+function collectManualRows(){
+  const rows = document.querySelectorAll('#manualRows .manual-row');
+  rows.forEach(row => {
+    const emailInp = row.querySelector('[data-field="email"]');
+    if(!emailInp) return;
+    const email = emailInp.value.trim();
+    if(!email || !email.includes('@')) return;
+    if(prospects.some(p => p.email === email)) return; // no duplicates
+    prospects.push({
+      email,
+      company_website: (row.querySelector('[data-field="company_website"]')?.value||'').trim(),
+      persona_linkedin:(row.querySelector('[data-field="persona_linkedin"]')?.value||'').trim(),
+      company_linkedin:(row.querySelector('[data-field="company_linkedin"]')?.value||'').trim(),
+    });
+  });
+}
+
+
+// ═══════════════════════ TABLE ════════════════════════
+function renderProspectTable(){
+  document.getElementById('prospectPreview').style.display='block';
+  document.getElementById('previewCount').textContent=`${prospects.length} prospect${prospects.length!==1?'s':''}`;
+  const show=prospects.slice(0,6);
+  document.getElementById('prospectTableBody').innerHTML=show.map((p,i)=>`
+    <tr>
+      <td>${i+1}</td>
+      <td class="td-email">${esc(p.email)}</td>
+      <td>${p.company_website?`<a href="${esc(p.company_website)}" target="_blank" class="td-link">${getDomain(p.company_website)}</a>`:'<span style="color:var(--text3)">—</span>'}</td>
+      <td>${p.persona_linkedin?`<a href="${esc(p.persona_linkedin)}" target="_blank" class="td-link">↗ Profile</a>`:'<span style="color:var(--text3)">—</span>'}</td>
+      <td>${p.company_linkedin?`<a href="${esc(p.company_linkedin)}" target="_blank" class="td-link">↗ Page</a>`:'<span style="color:var(--text3)">—</span>'}</td>
+    </tr>`).join('')+
+    (prospects.length>6?`<tr class="more-row"><td colspan="5">... and ${prospects.length-6} more</td></tr>`:'');
+  document.getElementById('prospectError').style.display='none';
+}
+
+function clearProspects(){
+  prospects=[];
+  document.getElementById('prospectPreview').style.display='none';
+  document.getElementById('prospectTableBody').innerHTML='';
+  document.getElementById('manualRows').innerHTML='';
+  manualRowCount=0;
+  const fi=document.getElementById('fileInput'); if(fi) fi.value='';
+  document.getElementById('prospectError').style.display='none';
+  addManualRow(); // always keep one blank row ready
+}
+
+function downloadTemplate(){
+  const csv='email,company_website,persona_linkedin,company_linkedin\njohn@acme.com,https://acme.com,https://linkedin.com/in/johndoe,https://linkedin.com/company/acme\njane@beta.io,https://beta.io,https://linkedin.com/in/janedoe,https://linkedin.com/company/beta-io\n';
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='sequencecraft_prospects_template.csv';
+  a.click();
+}
+
+// ═══════════════════════ GENERATION ══════════════════
+// ─── ticker messages cycling during generation ───
+const TICKER_MSGS = [
+  `Reading their company blog posts…`,
+  `Checking recent LinkedIn activity…`,
+  `Looking for funding announcements…`,
+  `Scanning hiring signals…`,
+  `Spotting pain points to hook into…`,
+  `Writing a subject line they can't ignore…`,
+  `Thinking like a top-tier SDR…`,
+  `Pulling industry news from last 90 days…`,
+  `Crafting the breakup email (Email 5)…`,
+  `Making sure it doesn't sound like a template…`,
+  `Adding personalisation hooks…`,
+  `Double-checking the CTA is frictionless…`,
+  `Almost there — polishing the sequence…`,
+];
+let tickerInterval = null;
+let stepInterval   = null;
+
+function startWorkingOverlay(idx){
+  const p = prospects[idx];
+  const name = p.email.split('@')[0].replace(/[._\-0-9]/g,' ').replace(/\w/g,c=>c.toUpperCase()).trim();
+  const company = getDomain(p.company_website) || p.email.split('@')[1] || '';
+
+  document.getElementById('workingOverlay').style.display = 'block';
+  document.getElementById('woHeadline').textContent = `Researching prospect ${idx+1} of ${prospects.length}…`;
+  document.getElementById('woProspectName').textContent = company ? `${name}  ·  ${company}` : name;
+
+  // Reset all steps
+  for(let i=1;i<=5;i++){
+    const s = document.getElementById('wos'+i);
+    s.className = 'wo-step';
+    const dot = s.querySelector('.wo-step-dot');
+    dot.textContent = '';
+    // remove check span if any
+    const chk = s.querySelector('.wo-step-check');
+    if(chk) chk.remove();
+  }
+
+  // Animate steps: light them up one by one
+  let stepIdx = 0;
+  clearInterval(stepInterval);
+  const stepMs = [600, 1400, 2400, 3600, 5000]; // staggered reveal times ms
+  stepMs.forEach((ms, i) => {
+    setTimeout(() => {
+      // mark previous as done
+      if(i > 0){
+        const prev = document.getElementById('wos'+i);
+        prev.className = 'wo-step done';
+        prev.querySelector('.wo-step-dot').textContent = '';
+        if(!prev.querySelector('.wo-step-check')){
+          const chk = document.createElement('span');
+          chk.className = 'wo-step-check';
+          chk.textContent = '✓';
+          chk.style.cssText = 'color:var(--green);font-size:11px;margin-left:auto;';
+          prev.appendChild(chk);
+        }
+      }
+      const cur = document.getElementById('wos'+(i+1));
+      if(cur) cur.className = 'wo-step active';
+    }, ms);
+  });
+
+  // Ticker cycling
+  clearInterval(tickerInterval);
+  let tIdx = 0;
+  const msgs = [...TICKER_MSGS].sort(()=>Math.random()-.5);
+  document.getElementById('woTicker').textContent = msgs[0];
+  tickerInterval = setInterval(() => {
+    tIdx = (tIdx+1) % msgs.length;
+    const el = document.getElementById('woTicker');
+    el.style.opacity = '0';
+    setTimeout(() => { el.textContent = msgs[tIdx]; el.style.opacity = '1'; }, 300);
+  }, 2800);
+}
+
+function finishStepsDone(){
+  for(let i=1;i<=5;i++){
+    const s = document.getElementById('wos'+i);
+    s.className = 'wo-step done';
+    if(!s.querySelector('.wo-step-check')){
+      const chk = document.createElement('span');
+      chk.className='wo-step-check';
+      chk.textContent='✓';
+      chk.style.cssText='color:var(--green);font-size:11px;margin-left:auto;';
+      s.appendChild(chk);
+    }
+  }
+}
+
+function stopWorkingOverlay(){
+  clearInterval(tickerInterval);
+  clearInterval(stepInterval);
+  document.getElementById('workingOverlay').style.display = 'none';
+}
+
+async function startGeneration(){
+  if(!selectedTheme){document.getElementById('themeError').style.display='block';return;}
+  document.getElementById('themeError').style.display='none';
+  allResults=[]; currentIdx=0;
+  showPanel(4);
+  initBatchBar();
+  for(let i=0;i<prospects.length;i++){
+    startWorkingOverlay(i);
+    updateBatchBar(i, true);
+    await generateFor(i);
+    finishStepsDone();
+    updateBatchBar(i+1, false);
+  }
+  stopWorkingOverlay();
+  renderView(0);
+}
+
+function initBatchBar(){
+  document.getElementById('woBatchFrac').textContent = `0 / ${prospects.length}`;
+  document.getElementById('woBarFill').style.width = '0%';
+  document.getElementById('woStatuses').innerHTML = prospects.map((p,i) => {
+    const label = getDomain(p.company_website) || p.email.split('@')[1] || `#${i+1}`;
+    return `<span class="wo-status pending" id="wost_${i}">${label}</span>`;
+  }).join('');
+}
+
+function updateBatchBar(done, hasActive){
+  const total = prospects.length;
+  document.getElementById('woBarFill').style.width = (done/total*100)+'%';
+  document.getElementById('woBatchFrac').textContent = `${done} / ${total}`;
+  prospects.forEach((_,i) => {
+    const el = document.getElementById('wost_'+i); if(!el) return;
+    el.className = 'wo-status '+(i<done ? 'done' : i===done&&hasActive ? 'active' : 'pending');
+  });
+}
+
+async function generateFor(idx){
+  const p=prospects[idx];
+  const theme=THEMES.find(t=>t.id===selectedTheme);
+  const website=document.getElementById('websiteInput').value.trim();
+  const product=document.getElementById('productInput').value.trim();
+  const competitors=document.getElementById('competitorInput').value.trim();
+  const today=new Date();
+  const cutoff=new Date(today); cutoff.setMonth(today.getMonth()-3);
+  const dateRange=`${cutoff.toDateString()} – ${today.toDateString()}`;
+  const lenGuide={
+    short:'SHORT: 3–5 lines max. One idea, one CTA. Scannable in 10 seconds. No fluff.',
+    medium:'MEDIUM: 8–12 lines. Brief context, one key insight, clear CTA.',
+    long:'LONG: 15–20 lines. Full story arc, supporting proof/stats, detailed offer, clear CTA. Still no wasted words.'
+  };
+
+  // Extract domains for explicit anchoring — prevents industry hallucination
+  const sellerDomain = getDomain(website) || website;
+  const prospectDomain = p.company_website ? getDomain(p.company_website) : p.email.split('@')[1] || '';
+  const personaName = p.email.split('@')[0].replace(/[._\-0-9]/g,' ').replace(/\b\w/g,c=>c.toUpperCase()).trim();
+
+  const sys=`You are a world-class B2B cold email ghost writer and research analyst.
+
+══ ABSOLUTE IDENTITY RULES — READ FIRST, NEVER VIOLATE ══
+1. THE SELLER is the company described in SELLER INFO below. Every email is written FROM them. You must never invent a different seller, a different product, or a different industry for the sender.
+2. THE PROSPECT is the person/company described in PROSPECT INFO below. You are writing TO them.
+3. GROUND TRUTH: The seller's product description is the single source of truth. Do not override it, do not blend it with the prospect's industry, do not confuse the two parties.
+4. If the seller is a B2B SaaS company, every email must be FROM a B2B SaaS company. If the seller is an AI implementation firm, every email is FROM an AI implementation firm. Never drift.
+5. Research signals must be ABOUT THE PROSPECT (their company, their role, their industry) — not about the seller.
+
+══ YOUR TWO-PART TASK ══
+PART 1 — RESEARCH: Infer credible signals about the PROSPECT's world (their company website domain, their LinkedIn profile, recent industry news in THEIR sector, their company's likely challenges). Research window: last 3 months.
+PART 2 — WRITE: Use those signals as personalisation hooks in 5 emails, each written by the SELLER pitching THEIR product to the PROSPECT.
+
+══ EMAIL RULES ══
+- Every email references at least one specific personalised detail from PART 1 research
+- Never sound like a template
+- Goal: get a reply OR book a demo
+- Avoid all corporate filler: leverage, synergy, circle back, hope this finds you well
+- Email 1 (Day 1): Hook/curiosity only — no pitch, earn trust
+- Email 2 (Day 3): Deliver insight specific to the PROSPECT's situation
+- Email 3 (Day 7): Real pitch — clear offer from the SELLER, clear CTA
+- Email 4 (Day 12): Completely different angle
+- Email 5 (Day 18): Breakup email — memorable, low pressure
+
+Respond ONLY with valid JSON. Zero markdown. Zero preamble. Start directly with {
+
+CRITICAL JSON FORMATTING RULES:
+- The "body" field contains the full email. Use \n for line breaks inside the body string — never insert raw newlines.
+- Never use unescaped double quotes inside any string value. Use single quotes or rephrase.
+- Every string value must be on one line from the JSON parser's perspective (newlines encoded as \n).
+- Validate mentally that your JSON would pass JSON.parse() before outputting.
+
+{
+  "prospect_name": "first name inferred from email prefix",
+  "research_intel": {
+    "sources_used": ["news","linkedin_personal","linkedin_company","company_website"],
+    "signals": [
+      {"type":"news|linkedin|website|social","icon":"emoji","text":"specific signal about THE PROSPECT","source":"where found"}
+    ],
+    "personalisation_hooks": ["hook used in email 1","hook used in email 2"]
+  },
+  "emails": [
+    {
+      "number": 1,
+      "title": "short descriptive title",
+      "subject": "subject under 50 chars",
+      "is_thread": false,
+      "thread_reason": "why thread or standalone",
+      "send_day": "Day 1",
+      "body": "full email body",
+      "cta_goal": "reply or demo — one liner"
+    }
+  ]
+}`;
+
+  const usr=`══ SELLER INFO (the company sending these emails) ══
+Company domain: ${sellerDomain}
+Full website URL: ${website}
+What they sell: ${product}
+Competitors of the seller: ${competitors||'Not specified'}
+Email theme: ${theme.name} — ${theme.prompt}
+Email length requirement: ${lenGuide[selectedLength]}
+
+══ PROSPECT INFO (the person/company receiving these emails) ══
+Prospect email: ${p.email}
+Inferred first name: ${personaName}
+Prospect's company domain: ${prospectDomain}
+Prospect's company full website: ${p.company_website||'Not provided — infer industry from email domain: '+prospectDomain}
+Prospect's personal LinkedIn: ${p.persona_linkedin||'Not provided — infer role/seniority from email prefix and company domain'}
+Prospect's company LinkedIn: ${p.company_linkedin||'Not provided — infer company size/industry from domain'}
+
+══ RESEARCH DIRECTIVE ══
+Research window: ${dateRange}
+
+Using the prospect's company domain "${prospectDomain}", simulate having researched:
+1. Their company website (${p.company_website||prospectDomain}) — recent blog posts, product pages, press releases, leadership team
+2. Personal LinkedIn of "${personaName}" at "${prospectDomain}" — recent posts, activity, role, tenure
+3. Company LinkedIn of "${prospectDomain}" — funding, hiring trends, awards, announcements
+4. Web news about "${prospectDomain}" or "${personaName}" — any coverage in last 3 months
+5. Industry trends in THEIR sector (the prospect's sector, not the seller's)
+
+CRITICAL: All research signals must be about the PROSPECT's company and world.
+The SELLER (${sellerDomain}) is NOT the research subject — they are the sender.
+
+Derive a specific, believable signal for each email. Each signal should explain a real pain or trigger in the prospect's world that the seller's product (${product.slice(0,80)}...) can solve.
+
+Make the prospect think: "They actually know my world."`;
+
+  try{
+    const resp=await fetch('/api/generate',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4000,system:sys,messages:[{role:'user',content:usr}]})
+    });
+    const data=await resp.json();
+    const raw=data.content.map(b=>b.text||'').join('');
+    const parsed=robustParseJSON(raw);
+    if(!parsed) throw new Error('JSON parse failed after all recovery attempts');
+    allResults.push({prospect:p,...parsed});
+  } catch(e){
+    console.error('Generation failed for prospect',idx,e);
+    allResults.push({prospect:p,prospect_name:p.email.split('@')[0],research_intel:{sources_used:[],signals:[],personalisation_hooks:[]},emails:[]});
+  }
+}
+
+// ─── robust JSON parser with progressive recovery ───────────────
+function robustParseJSON(raw){
+  // Strip markdown fences
+  let text = raw.replace(/```json/gi,'').replace(/```/g,'').trim();
+
+  // Find outermost { ... }
+  const s = text.indexOf('{');
+  const e = text.lastIndexOf('}');
+  if(s === -1 || e === -1) return null;
+  text = text.slice(s, e + 1);
+
+  // Attempt 1: direct parse
+  try{ return JSON.parse(text); } catch(_){}
+
+  // Attempt 2: walk char-by-char and escape raw newlines/tabs inside strings
+  try{ return JSON.parse(sanitiseJSONStrings(text)); } catch(_){}
+
+  // Attempt 3: nuke all bare control chars globally then try again
+  try{
+    const nuked = text.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g,'')
+                      .replace(/\r\n/g,'\\n').replace(/\r/g,'\\n');
+    return JSON.parse(sanitiseJSONStrings(nuked));
+  } catch(_){}
+
+  // Attempt 4: field-by-field extraction fallback
+  console.warn('JSON parse: all attempts failed, using field extractor');
+  return extractFieldsFallback(text);
+}
+
+function sanitiseJSONStrings(json){
+  let out = '';
+  let inStr = false;
+  let esc = false;
+  for(let i = 0; i < json.length; i++){
+    const c = json[i];
+    if(esc){ out += c; esc = false; continue; }
+    if(c === '\\' && inStr){ out += c; esc = true; continue; }
+    if(c === '"'){ inStr = !inStr; out += c; continue; }
+    if(inStr){
+      const code = c.charCodeAt(0);
+      if(c === '\n'){ out += '\\n'; continue; }
+      if(c === '\r'){ out += '\\r'; continue; }
+      if(c === '\t'){ out += '\\t'; continue; }
+      if(code < 32){ continue; } // drop other control chars
+    }
+    out += c;
+  }
+  return out;
+}
+
+function extractFieldsFallback(text){
+  const emails = [];
+  for(let n = 1; n <= 5; n++){
+    const subMatch = text.match(new RegExp('"number"\\s*:\\s*' + n + '[\\s\\S]*?"subject"\\s*:\\s*"([^"]+)"'));
+    const bodyMatch = text.match(new RegExp('"number"\\s*:\\s*' + n + '[\\s\\S]*?"body"\\s*:\\s*"([\\s\\S]*?)"\\s*,\\s*"cta'));
+    if(subMatch){
+      emails.push({
+        number: n,
+        title: 'Email ' + n,
+        subject: subMatch[1] || '',
+        is_thread: n > 1,
+        thread_reason: '',
+        send_day: ['Day 1','Day 3','Day 7','Day 12','Day 18'][n-1],
+        body: bodyMatch ? bodyMatch[1].replace(/\\n/g,'\n') : '(Body unavailable — please regenerate)',
+        cta_goal: 'Get a reply or book a demo'
+      });
+    }
+  }
+  if(emails.length === 0) return null;
+  return {
+    prospect_name: 'there',
+    research_intel:{ sources_used:[], signals:[], personalisation_hooks:[] },
+    emails
+  };
+}
+
+// ═══════════════════════ RENDER VIEW ═════════════════
+function renderView(idx){
+  if(!allResults[idx]) return;
+  currentIdx=idx;
+  const result=allResults[idx];
+  const p=result.prospect;
+  const theme=THEMES.find(t=>t.id===selectedTheme);
+
+  // Prospect nav header
+  document.getElementById('pnavName').textContent=`${result.prospect_name||''}  ·  ${getDomain(p.company_website)||p.email}`;
+  document.getElementById('pnavCounter').textContent=`${idx+1} / ${allResults.length}`;
+  document.getElementById('prevBtn').disabled=idx===0;
+  document.getElementById('nextBtn').disabled=idx===allResults.length-1;
+
+  document.getElementById('pnavMeta').innerHTML=[
+    `<span class="pnav-meta-item">✉ ${esc(p.email)}</span>`,
+    p.company_website?`<span class="pnav-meta-item"><a href="${esc(p.company_website)}" target="_blank">🌐 Website ↗</a></span>`:'',
+    p.persona_linkedin?`<span class="pnav-meta-item"><a href="${esc(p.persona_linkedin)}" target="_blank">👤 LinkedIn ↗</a></span>`:'',
+    p.company_linkedin?`<span class="pnav-meta-item"><a href="${esc(p.company_linkedin)}" target="_blank">🏢 Company LI ↗</a></span>`:'',
+  ].filter(Boolean).join('');
+
+  // Dots
+  document.getElementById('pnavDots').innerHTML=allResults.map((_,i)=>
+    `<div class="pnav-dot ${i===idx?'active':''}" onclick="goToProspectIdx(${i})" title="Prospect ${i+1}"></div>`
+  ).join('');
+
+  // Intel
+  const intel=result.research_intel||{};
+  const signals=intel.signals||[];
+  document.getElementById('intelSub').textContent=`${signals.length} signal${signals.length!==1?'s':''} collected · last 3 months`;
+  const srcMap={news:'🗞 News',linkedin:'💼 LinkedIn',linkedin_personal:'👤 Personal LI',linkedin_company:'🏢 Company LI',website:'🌐 Website',social:'📱 Social'};
+  const chipClass={news:'news',linkedin:'linkedin',linkedin_personal:'linkedin',linkedin_company:'linkedin',website:'website',social:'social'};
+  document.getElementById('intelChips').innerHTML=(intel.sources_used||[]).map(s=>
+    `<div class="intel-chip ${chipClass[s]||'website'}">${srcMap[s]||s}</div>`
+  ).join('');
+  document.getElementById('intelItems').innerHTML=signals.length
+    ? signals.map(s=>`
+        <div class="intel-item">
+          <div class="intel-item-icon">${s.icon||'📌'}</div>
+          <div>
+            <div class="intel-item-text">${esc(s.text)}</div>
+            <div class="intel-item-source">Source: ${esc(s.source||'Research')}</div>
+          </div>
+        </div>`).join('')
+    : '<div style="color:var(--text3);font-size:12px;padding:4px 0;">No signals recorded for this prospect.</div>';
+
+  // Results meta
+  document.getElementById('resultsMeta').textContent=
+    `Theme: "${theme?.name}" · ${selectedLength.charAt(0).toUpperCase()+selectedLength.slice(1)} · Personalised for ${result.prospect_name||p.email}`;
+
+  // Emails
+  const seq=document.getElementById('emailSequence');
+  if(!result.emails||result.emails.length===0){
+    seq.innerHTML=`<div style="text-align:center;padding:48px;color:var(--text2);font-size:14px;">Generation failed for this prospect.<br><br><button onclick="regenerateCurrent()" style="background:var(--accent);border:none;color:#fff;padding:11px 22px;border-radius:var(--radius-sm);cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;">↺ Retry</button></div>`;
+    return;
+  }
+
+  seq.innerHTML=result.emails.map((email,i)=>`
+    <div class="email-card" id="ecard_${i}">
+      <div class="email-card-header" onclick="toggleCard(${i})">
+        <div class="email-card-left">
+          <div class="email-num">${email.number}</div>
+          <div>
+            <div class="email-meta-title">${esc(email.title)}</div>
+            <div class="email-meta-sub">Send on ${esc(email.send_day)}</div>
+          </div>
+        </div>
+        <div class="email-badges">
+          <span class="badge day">${esc(email.send_day)}</span>
+          <span class="badge ${email.is_thread?'thread':'standalone'}">${email.is_thread?'↩ Thread':'✦ Standalone'}</span>
+        </div>
+        <div class="chevron">▼</div>
+      </div>
+      <div class="email-card-body">
+        <div class="subject-line">
+          <div class="subject-label">Subject Line</div>
+          <div class="subject-text">${esc(email.subject)}</div>
+        </div>
+        <div class="thread-note ${email.is_thread?'is-thread':'is-standalone'}">
+          <span>${email.is_thread?'↩':'✦'}</span>
+          <span><strong>${email.is_thread?'Thread — reply to previous email.':'Separate thread — fresh subject line.'}</strong> ${esc(email.thread_reason||'')}</span>
+        </div>
+        <div class="email-body">${esc(email.body)}</div>
+        <div class="email-footer">
+          <div class="email-cta-note">${esc(email.cta_goal)}</div>
+          <button class="copy-btn" onclick="copyEmail(${i},this)">Copy Email</button>
+        </div>
+      </div>
+    </div>`).join('');
+
+  toggleCard(0);
+}
+
+function navigateProspect(delta){
+  const ni=currentIdx+delta;
+  if(ni<0||ni>=allResults.length) return;
+  renderView(ni);
+}
+
+function goToProspectIdx(i){renderView(i);}
+
+function toggleCard(i){document.getElementById('ecard_'+i)?.classList.toggle('open');}
+function toggleIntel(){document.getElementById('intelPanel').classList.toggle('open');}
+
+async function regenerateCurrent(){
+  updateBatchProgress(currentIdx,true);
+  await generateFor(currentIdx);
+  updateBatchProgress(currentIdx+1,false);
+  renderView(currentIdx);
+}
+
+// ═══════════════════════ COPY ════════════════════════
+function copyToClipboard(text,btn){
+  const flash=()=>{if(btn){const o=btn.textContent;btn.textContent='✓ Copied!';btn.classList.add('copied');setTimeout(()=>{btn.textContent=o;btn.classList.remove('copied');},2000);}};
+  const fallback=()=>{
+    const ta=document.createElement('textarea');
+    ta.value=text; ta.style.cssText='position:fixed;left:-9999px;top:-9999px;opacity:0;';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    try{document.execCommand('copy');}catch(e){}
+    document.body.removeChild(ta); flash();
+  };
+  if(navigator.clipboard&&window.isSecureContext){
+    navigator.clipboard.writeText(text).then(flash).catch(fallback);
+  } else { fallback(); }
+}
+
+function copyEmail(i,btn){
+  const r=allResults[currentIdx]; if(!r?.emails?.[i]) return;
+  const e=r.emails[i];
+  copyToClipboard(`Subject: ${e.subject}\n\n${e.body}`,btn);
+}
+
+function copyAll(){
+  const r=allResults[currentIdx]; if(!r?.emails) return;
+  const text=r.emails.map(e=>`--- EMAIL ${e.number} (${e.send_day}) ---\nSubject: ${e.subject}\n\n${e.body}`).join('\n\n'+'═'.repeat(50)+'\n\n');
+  copyToClipboard(text,document.getElementById('copyAllBtn'));
+}
+
+// ═══════════════════════ FEEDBACK ════════════════════
+function openFeedback(){document.getElementById('feedbackModal').classList.add('open');}
+function closeFeedback(){document.getElementById('feedbackModal').classList.remove('open');}
+document.getElementById('feedbackModal').addEventListener('click',function(e){if(e.target===this)closeFeedback();});
+function setRating(n){currentRating=n;document.querySelectorAll('.star-btn').forEach((b,i)=>b.classList.toggle('active',i<n));}
+function submitFeedback(){
+  document.getElementById('feedbackForm').style.display='none';
+  document.getElementById('feedbackThanks').style.display='block';
+  setTimeout(()=>{
+    closeFeedback();
+    setTimeout(()=>{
+      document.getElementById('feedbackForm').style.display='block';
+      document.getElementById('feedbackThanks').style.display='none';
+      document.getElementById('feedbackText').value='';
+      currentRating=0;
+      document.querySelectorAll('.star-btn').forEach(b=>b.classList.remove('active'));
+    },300);
+  },2800);
+}
+
+// ═══════════════════════ UTILS ═══════════════════════
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function getDomain(url){try{return new URL(url).hostname.replace('www.','');}catch{return url||'';}}
+
+// Seed one manual row
+addManualRow();
+</script>
+</body>
+</html>
