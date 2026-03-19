@@ -571,149 +571,6 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;align-items:cen
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js">
-// ═══════════════════════ SIGNUP GATE ═════════════════════════
-let pendingGeneration = false;
-let generatedOtp      = '';
-let signupData        = {};
-
-function openSignupModal(){
-  // Reset to step 1
-  document.getElementById('signupStep1').style.display = 'block';
-  document.getElementById('signupStep2').style.display = 'none';
-  document.getElementById('signupStep3').style.display = 'none';
-  document.getElementById('sgStep1Error').style.display = 'none';
-  document.getElementById('sgStep2Error').style.display = 'none';
-  document.getElementById('signupModal').classList.add('open');
-}
-
-function closeSignupModal(){
-  document.getElementById('signupModal').classList.remove('open');
-}
-
-function submitSignupStep1(){
-  const name  = document.getElementById('sgName').value.trim();
-  const email = document.getElementById('sgEmail').value.trim();
-  const phone = document.getElementById('sgPhone').value.trim();
-  const err   = document.getElementById('sgStep1Error');
-
-  if(!name || !email || !phone || !email.includes('@')){
-    err.style.display = 'block';
-    err.textContent   = 'Please fill in all fields with a valid email.';
-    return;
-  }
-  err.style.display = 'none';
-
-  signupData = { name, email, phone };
-
-  // Generate a fake 6-digit OTP (no real SMS — just UX)
-  generatedOtp = String(Math.floor(100000 + Math.random() * 900000));
-  console.log('[SequenceCraft] Dev OTP:', generatedOtp); // visible in console for testing
-
-  // Show OTP step
-  document.getElementById('sgPhoneDisplay').textContent = phone;
-  document.getElementById('signupStep1').style.display = 'none';
-  document.getElementById('signupStep2').style.display = 'block';
-
-  // Focus first OTP box
-  setTimeout(() => {
-    const boxes = document.querySelectorAll('.otp-box');
-    if(boxes[0]) boxes[0].focus();
-  }, 100);
-}
-
-function otpNext(el, idx){
-  el.classList.toggle('filled', el.value.length > 0);
-  // Auto-advance to next box
-  if(el.value.length === 1){
-    const boxes = document.querySelectorAll('.otp-box');
-    if(idx < 5) boxes[idx + 1].focus();
-    else submitSignupStep2(); // auto-submit when last box filled
-  }
-}
-
-function resendOtp(){
-  // Generate new OTP
-  generatedOtp = String(Math.floor(100000 + Math.random() * 900000));
-  console.log('[SequenceCraft] New OTP:', generatedOtp);
-  // Clear boxes
-  document.querySelectorAll('.otp-box').forEach(b => { b.value = ''; b.classList.remove('filled'); });
-  document.getElementById('sgStep2Error').style.display = 'none';
-  document.querySelectorAll('.otp-box')[0].focus();
-  // Show a brief confirmation
-  const err = document.getElementById('sgStep2Error');
-  err.style.display = 'block';
-  err.style.background = 'rgba(76,252,140,.08)';
-  err.style.borderColor = 'rgba(76,252,140,.3)';
-  err.style.color = 'var(--green)';
-  err.textContent = 'New code generated! Check your console (or just enter any 6 digits).';
-  setTimeout(() => {
-    err.style.display = 'none';
-    err.style.background = '';
-    err.style.borderColor = '';
-    err.style.color = '';
-  }, 3000);
-}
-
-async function submitSignupStep2(){
-  const boxes    = document.querySelectorAll('.otp-box');
-  const entered  = Array.from(boxes).map(b => b.value).join('');
-  const err      = document.getElementById('sgStep2Error');
-
-  if(entered.length < 6){
-    err.style.display = 'block';
-    err.textContent   = 'Please enter all 6 digits.';
-    return;
-  }
-
-  if(entered !== generatedOtp){
-    err.style.display = 'block';
-    err.textContent   = 'Incorrect code. Hint: check your browser console for the code.';
-    boxes.forEach(b => { b.value = ''; b.classList.remove('filled'); });
-    boxes[0].focus();
-    return;
-  }
-
-  // ✅ Verified — save to localStorage so they never see this again
-  localStorage.setItem('sc_verified', '1');
-  localStorage.setItem('sc_user', JSON.stringify(signupData));
-
-  // Show success screen
-  document.getElementById('signupStep2').style.display = 'none';
-  document.getElementById('signupStep3').style.display = 'block';
-
-  // Save lead to Google Sheets
-  saveLeadToSheets(signupData);
-
-  // Close modal after 1.8s and trigger generation
-  setTimeout(async () => {
-    closeSignupModal();
-    if(pendingGeneration){
-      pendingGeneration = false;
-      await runGeneration();
-    }
-  }, 1800);
-}
-
-async function saveLeadToSheets(data){
-  try{
-    await fetch('/api/save-lead', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name:      data.name,
-        email:     data.email,
-        phone:     data.phone,
-        timestamp: new Date().toISOString(),
-        source:    'SequenceCraft',
-      })
-    });
-  } catch(e){
-    // Silently fail — don't break the UX if sheets logging fails
-    console.warn('Lead save failed:', e);
-  }
-}
-// ═══════════════════════════════════════════════════════════════
-
 </script>
 <script>
 // ═══════════════════════ STATE ═══════════════════════
@@ -1521,6 +1378,119 @@ function getDomain(url){try{return new URL(url).hostname.replace('www.','');}cat
 
 // Seed one manual row
 addManualRow();
+
+// ═══════════════════════ SIGNUP GATE ═════════════════════════
+let pendingGeneration = false;
+let generatedOtp      = '';
+let signupData        = {};
+
+function openSignupModal(){
+  document.getElementById('signupStep1').style.display = 'block';
+  document.getElementById('signupStep2').style.display = 'none';
+  document.getElementById('signupStep3').style.display = 'none';
+  document.getElementById('sgStep1Error').style.display = 'none';
+  document.getElementById('sgStep2Error').style.display = 'none';
+  document.getElementById('signupModal').classList.add('open');
+}
+
+function closeSignupModal(){
+  document.getElementById('signupModal').classList.remove('open');
+}
+
+function submitSignupStep1(){
+  const name  = document.getElementById('sgName').value.trim();
+  const email = document.getElementById('sgEmail').value.trim();
+  const phone = document.getElementById('sgPhone').value.trim();
+  const err   = document.getElementById('sgStep1Error');
+  if(!name || !email || !phone || !email.includes('@')){
+    err.style.display = 'block';
+    err.textContent   = 'Please fill in all fields with a valid email.';
+    return;
+  }
+  err.style.display = 'none';
+  signupData = { name, email, phone };
+  generatedOtp = String(Math.floor(100000 + Math.random() * 900000));
+  console.log('[SequenceCraft] OTP:', generatedOtp);
+  document.getElementById('sgPhoneDisplay').textContent = phone;
+  document.getElementById('signupStep1').style.display = 'none';
+  document.getElementById('signupStep2').style.display = 'block';
+  setTimeout(() => {
+    const boxes = document.querySelectorAll('.otp-box');
+    if(boxes[0]) boxes[0].focus();
+  }, 100);
+}
+
+function otpNext(el, idx){
+  el.classList.toggle('filled', el.value.length > 0);
+  if(el.value.length === 1){
+    const boxes = document.querySelectorAll('.otp-box');
+    if(idx < 5) boxes[idx + 1].focus();
+    else submitSignupStep2();
+  }
+}
+
+function resendOtp(){
+  generatedOtp = String(Math.floor(100000 + Math.random() * 900000));
+  console.log('[SequenceCraft] New OTP:', generatedOtp);
+  document.querySelectorAll('.otp-box').forEach(b => { b.value = ''; b.classList.remove('filled'); });
+  const err = document.getElementById('sgStep2Error');
+  err.style.cssText = 'display:block;background:rgba(76,252,140,.08);border-color:rgba(76,252,140,.3);color:var(--green)';
+  err.textContent = 'New code sent! Check browser console for the code.';
+  setTimeout(() => { err.style.cssText = 'display:none'; }, 3000);
+  document.querySelectorAll('.otp-box')[0].focus();
+}
+
+async function submitSignupStep2(){
+  const boxes   = document.querySelectorAll('.otp-box');
+  const entered = Array.from(boxes).map(b => b.value).join('');
+  const err     = document.getElementById('sgStep2Error');
+  if(entered.length < 6){
+    err.style.cssText = '';
+    err.style.display = 'block';
+    err.textContent   = 'Please enter all 6 digits.';
+    return;
+  }
+  if(entered !== generatedOtp){
+    err.style.cssText = '';
+    err.style.display = 'block';
+    err.textContent   = 'Incorrect code. Hint: check browser console (F12) for the code.';
+    boxes.forEach(b => { b.value = ''; b.classList.remove('filled'); });
+    boxes[0].focus();
+    return;
+  }
+  localStorage.setItem('sc_verified', '1');
+  localStorage.setItem('sc_user', JSON.stringify(signupData));
+  document.getElementById('signupStep2').style.display = 'none';
+  document.getElementById('signupStep3').style.display = 'block';
+  saveLeadToSheets(signupData);
+  setTimeout(async () => {
+    closeSignupModal();
+    if(pendingGeneration){
+      pendingGeneration = false;
+      await runGeneration();
+    }
+  }, 1800);
+}
+
+async function saveLeadToSheets(data){
+  try{
+    await fetch('/api/save-lead', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name:      data.name,
+        email:     data.email,
+        phone:     data.phone,
+        timestamp: new Date().toISOString(),
+        source:    'SequenceCraft',
+      })
+    });
+  } catch(e){
+    console.warn('Lead save failed silently:', e);
+  }
+}
+// ═════════════════════════════════════════════════════════════
+
 </script>
 
 <!-- ══ SIGNUP GATE MODAL ══ -->
