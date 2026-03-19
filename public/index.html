@@ -282,6 +282,12 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;align-items:cen
 .thank-you h4{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;margin-bottom:6px;}
 .thank-you p{color:var(--text2);font-size:13px;}
 @media(max-width:680px){nav{padding:12px 18px;}.hero{padding:90px 18px 36px;}.container{padding:0 18px 60px;}.input-grid{grid-template-columns:1fr;}.themes-grid{grid-template-columns:1fr;}.results-header{flex-direction:column;}.pnav-dots{display:none;}.length-selector{flex-direction:column;}}
+
+/* ── SIGNUP GATE ── */
+.otp-box{width:46px;height:54px;border-radius:10px;background:var(--surface2);border:2px solid var(--border);color:var(--text);font-family:'Syne',sans-serif;font-size:22px;font-weight:800;text-align:center;outline:none;transition:all .2s;}
+.otp-box:focus{border-color:var(--accent);background:rgba(124,92,252,.08);}
+.otp-box.filled{border-color:var(--accent);}
+
 </style>
 </head>
 <body>
@@ -564,7 +570,151 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;align-items:cen
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js">
+// ═══════════════════════ SIGNUP GATE ═════════════════════════
+let pendingGeneration = false;
+let generatedOtp      = '';
+let signupData        = {};
+
+function openSignupModal(){
+  // Reset to step 1
+  document.getElementById('signupStep1').style.display = 'block';
+  document.getElementById('signupStep2').style.display = 'none';
+  document.getElementById('signupStep3').style.display = 'none';
+  document.getElementById('sgStep1Error').style.display = 'none';
+  document.getElementById('sgStep2Error').style.display = 'none';
+  document.getElementById('signupModal').classList.add('open');
+}
+
+function closeSignupModal(){
+  document.getElementById('signupModal').classList.remove('open');
+}
+
+function submitSignupStep1(){
+  const name  = document.getElementById('sgName').value.trim();
+  const email = document.getElementById('sgEmail').value.trim();
+  const phone = document.getElementById('sgPhone').value.trim();
+  const err   = document.getElementById('sgStep1Error');
+
+  if(!name || !email || !phone || !email.includes('@')){
+    err.style.display = 'block';
+    err.textContent   = 'Please fill in all fields with a valid email.';
+    return;
+  }
+  err.style.display = 'none';
+
+  signupData = { name, email, phone };
+
+  // Generate a fake 6-digit OTP (no real SMS — just UX)
+  generatedOtp = String(Math.floor(100000 + Math.random() * 900000));
+  console.log('[SequenceCraft] Dev OTP:', generatedOtp); // visible in console for testing
+
+  // Show OTP step
+  document.getElementById('sgPhoneDisplay').textContent = phone;
+  document.getElementById('signupStep1').style.display = 'none';
+  document.getElementById('signupStep2').style.display = 'block';
+
+  // Focus first OTP box
+  setTimeout(() => {
+    const boxes = document.querySelectorAll('.otp-box');
+    if(boxes[0]) boxes[0].focus();
+  }, 100);
+}
+
+function otpNext(el, idx){
+  el.classList.toggle('filled', el.value.length > 0);
+  // Auto-advance to next box
+  if(el.value.length === 1){
+    const boxes = document.querySelectorAll('.otp-box');
+    if(idx < 5) boxes[idx + 1].focus();
+    else submitSignupStep2(); // auto-submit when last box filled
+  }
+}
+
+function resendOtp(){
+  // Generate new OTP
+  generatedOtp = String(Math.floor(100000 + Math.random() * 900000));
+  console.log('[SequenceCraft] New OTP:', generatedOtp);
+  // Clear boxes
+  document.querySelectorAll('.otp-box').forEach(b => { b.value = ''; b.classList.remove('filled'); });
+  document.getElementById('sgStep2Error').style.display = 'none';
+  document.querySelectorAll('.otp-box')[0].focus();
+  // Show a brief confirmation
+  const err = document.getElementById('sgStep2Error');
+  err.style.display = 'block';
+  err.style.background = 'rgba(76,252,140,.08)';
+  err.style.borderColor = 'rgba(76,252,140,.3)';
+  err.style.color = 'var(--green)';
+  err.textContent = 'New code generated! Check your console (or just enter any 6 digits).';
+  setTimeout(() => {
+    err.style.display = 'none';
+    err.style.background = '';
+    err.style.borderColor = '';
+    err.style.color = '';
+  }, 3000);
+}
+
+async function submitSignupStep2(){
+  const boxes    = document.querySelectorAll('.otp-box');
+  const entered  = Array.from(boxes).map(b => b.value).join('');
+  const err      = document.getElementById('sgStep2Error');
+
+  if(entered.length < 6){
+    err.style.display = 'block';
+    err.textContent   = 'Please enter all 6 digits.';
+    return;
+  }
+
+  if(entered !== generatedOtp){
+    err.style.display = 'block';
+    err.textContent   = 'Incorrect code. Hint: check your browser console for the code.';
+    boxes.forEach(b => { b.value = ''; b.classList.remove('filled'); });
+    boxes[0].focus();
+    return;
+  }
+
+  // ✅ Verified — save to localStorage so they never see this again
+  localStorage.setItem('sc_verified', '1');
+  localStorage.setItem('sc_user', JSON.stringify(signupData));
+
+  // Show success screen
+  document.getElementById('signupStep2').style.display = 'none';
+  document.getElementById('signupStep3').style.display = 'block';
+
+  // Save lead to Google Sheets
+  saveLeadToSheets(signupData);
+
+  // Close modal after 1.8s and trigger generation
+  setTimeout(async () => {
+    closeSignupModal();
+    if(pendingGeneration){
+      pendingGeneration = false;
+      await runGeneration();
+    }
+  }, 1800);
+}
+
+async function saveLeadToSheets(data){
+  try{
+    await fetch('/api/save-lead', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name:      data.name,
+        email:     data.email,
+        phone:     data.phone,
+        timestamp: new Date().toISOString(),
+        source:    'SequenceCraft',
+      })
+    });
+  } catch(e){
+    // Silently fail — don't break the UX if sheets logging fails
+    console.warn('Lead save failed:', e);
+  }
+}
+// ═══════════════════════════════════════════════════════════════
+
+</script>
 <script>
 // ═══════════════════════ STATE ═══════════════════════
 let selectedLength = 'short';
@@ -959,6 +1109,20 @@ function stopWorkingOverlay(){
 async function startGeneration(){
   if(!selectedTheme){document.getElementById('themeError').style.display='block';return;}
   document.getElementById('themeError').style.display='none';
+
+  // Check if user has already verified — stored in localStorage
+  const verified = localStorage.getItem('sc_verified');
+  if(!verified){
+    // Show signup gate — actual generation runs after verification
+    pendingGeneration = true;
+    openSignupModal();
+    return;
+  }
+
+  await runGeneration();
+}
+
+async function runGeneration(){
   allResults=[]; currentIdx=0;
   showPanel(4);
   initBatchBar();
@@ -1358,5 +1522,66 @@ function getDomain(url){try{return new URL(url).hostname.replace('www.','');}cat
 // Seed one manual row
 addManualRow();
 </script>
+
+<!-- ══ SIGNUP GATE MODAL ══ -->
+<div class="modal-overlay" id="signupModal">
+  <div class="modal" style="max-width:440px;">
+
+    <!-- Step 1: collect details -->
+    <div id="signupStep1">
+      <div style="text-align:center;margin-bottom:24px;">
+        <div style="font-size:36px;margin-bottom:12px;">🔓</div>
+        <h3 style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;margin-bottom:8px;">Your sequence is ready!</h3>
+        <p style="color:var(--text2);font-size:13px;line-height:1.6;">Enter your details to unlock it. Takes 10 seconds — we'll send you a quick verification code.</p>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px;">
+        <div class="field-group">
+          <label>Full Name</label>
+          <input type="text" id="sgName" placeholder="Your full name" autocomplete="name"/>
+        </div>
+        <div class="field-group">
+          <label>Work Email</label>
+          <input type="email" id="sgEmail" placeholder="you@company.com" autocomplete="email"/>
+        </div>
+        <div class="field-group">
+          <label>Phone Number</label>
+          <input type="tel" id="sgPhone" placeholder="+1 555 000 0000" autocomplete="tel"/>
+        </div>
+      </div>
+      <div id="sgStep1Error" class="error-box">Please fill in all fields with a valid email.</div>
+      <button class="generate-btn" onclick="submitSignupStep1()" id="sgStep1Btn">Send Verification Code →</button>
+      <p style="text-align:center;font-size:11px;color:var(--text3);margin-top:14px;">No spam. No selling your data. Just keeping the lights on. 🙏</p>
+    </div>
+
+    <!-- Step 2: OTP verify -->
+    <div id="signupStep2" style="display:none;">
+      <div style="text-align:center;margin-bottom:24px;">
+        <div style="font-size:36px;margin-bottom:12px;">📱</div>
+        <h3 style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;margin-bottom:8px;">Check your phone</h3>
+        <p style="color:var(--text2);font-size:13px;line-height:1.6;">We sent a 6-digit code to <strong id="sgPhoneDisplay"></strong>.<br/>Enter it below to unlock your sequences.</p>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-bottom:20px;" id="otpInputs">
+        <input class="otp-box" type="text" maxlength="1" inputmode="numeric" oninput="otpNext(this,0)"/>
+        <input class="otp-box" type="text" maxlength="1" inputmode="numeric" oninput="otpNext(this,1)"/>
+        <input class="otp-box" type="text" maxlength="1" inputmode="numeric" oninput="otpNext(this,2)"/>
+        <input class="otp-box" type="text" maxlength="1" inputmode="numeric" oninput="otpNext(this,3)"/>
+        <input class="otp-box" type="text" maxlength="1" inputmode="numeric" oninput="otpNext(this,4)"/>
+        <input class="otp-box" type="text" maxlength="1" inputmode="numeric" oninput="otpNext(this,5)"/>
+      </div>
+      <div id="sgStep2Error" class="error-box">Incorrect code. Please try again.</div>
+      <button class="generate-btn" onclick="submitSignupStep2()" id="sgStep2Btn">Verify &amp; Unlock →</button>
+      <p style="text-align:center;font-size:11px;color:var(--text3);margin-top:14px;cursor:pointer;" onclick="resendOtp()">Didn't get it? <span style="color:var(--accent);text-decoration:underline;">Resend code</span></p>
+    </div>
+
+    <!-- Step 3: success -->
+    <div id="signupStep3" style="display:none;text-align:center;padding:10px 0;">
+      <div style="font-size:52px;margin-bottom:16px;">🎉</div>
+      <h3 style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;margin-bottom:8px;">You're in!</h3>
+      <p style="color:var(--text2);font-size:14px;line-height:1.6;">Full access unlocked. Your sequences are ready.<br/>Welcome to SequenceCraft.</p>
+    </div>
+
+  </div>
+</div>
+
 </body>
 </html>
