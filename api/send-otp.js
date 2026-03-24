@@ -6,9 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-// Shared OTP store via globalThis — persists across requests within same Edge instance
-const otpStore = globalThis.__otpStore || (globalThis.__otpStore = new Map());
-
 export default async function handler(req) {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
   if (req.method !== 'POST') return new Response(JSON.stringify({ error: 'Method not allowed' }), {
@@ -24,19 +21,38 @@ export default async function handler(req) {
       });
     }
 
-    // Clean phone number — ensure it starts with +
-    const cleanPhone = phone.trim().replace(/\s+/g, '');
+    const cleanPhone     = phone.trim().replace(/\s+/g, '');
     const formattedPhone = cleanPhone.startsWith('+') ? cleanPhone : '+' + cleanPhone;
+    const otp            = String(Math.floor(100000 + Math.random() * 900000));
+    const expiresAt      = Date.now() + 10 * 60 * 1000;
 
-    // Generate 6-digit OTP
-    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    // Save OTP to Supabase
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
 
-    // Store OTP with 10 minute expiry
-    globalThis.__otpStore.set(formattedPhone, {
-      otp,
-      expires: Date.now() + 10 * 60 * 1000, // 10 minutes
-      attempts: 0,
+    const dbRes = await fetch(`${supabaseUrl}/rest/v1/otp_store`, {
+      method:  'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'apikey':         supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Prefer':         'resolution=merge-duplicates',
+      },
+      body: JSON.stringify({
+        phone:      formattedPhone,
+        otp:        otp,
+        expires_at: expiresAt,
+        attempts:   0,
+      }),
     });
+
+    if (!dbRes.ok) {
+      const errText = await dbRes.text();
+      console.error('Supabase error:', errText);
+      return new Response(JSON.stringify({ error: 'Failed to store OTP. Please try again.' }), {
+        status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
 
     // Send SMS via Twilio
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
@@ -46,9 +62,9 @@ export default async function handler(req) {
     const twilioRes = await fetch(
       `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
       {
-        method: 'POST',
+        method:  'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Type':  'application/x-www-form-urlencoded',
           'Authorization': 'Basic ' + btoa(`${accountSid}:${authToken}`),
         },
         body: new URLSearchParams({
@@ -63,7 +79,7 @@ export default async function handler(req) {
 
     if (!twilioRes.ok) {
       console.error('Twilio error:', twilioData);
-      return new Response(JSON.stringify({ error: twilioData.message || 'Failed to send SMS' }), {
+      return new Response(JSON.stringify({ error: twilioData.message || 'Failed to send SMS. Make sure phone includes country code e.g. +91 98765 43210' }), {
         status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });
     }
@@ -79,4 +95,3 @@ export default async function handler(req) {
     });
   }
 }
-
