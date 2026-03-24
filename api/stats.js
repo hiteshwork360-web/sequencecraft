@@ -6,101 +6,123 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-// ── In-memory counters (persists within same Edge instance) ──────────────────
-// globalThis keeps state across requests on the same server instance
-const state = globalThis.__scStats || (globalThis.__scStats = {
-  totalCount:    0,        // all-time total sequences generated
-  hourlyCount:   0,        // sequences generated this hour
-  lastFlushHour: -1,       // hour index of last flush to sheets
-  lastFlushedAt: null,     // ISO timestamp of last flush
-});
-globalThis.__scStats = state;
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
 export default async function handler(req) {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
 
-  // ── GET /api/stats — return current count for UI display ─────────────────
+  // ── GET /api/stats — return current total for nav counter ────────────────
   if (req.method === 'GET') {
-    return new Response(JSON.stringify({
-      total:       state.totalCount,
-      lastFlushed: state.lastFlushedAt,
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
+    try {
+      const total = await getTotal();
+      return new Response(JSON.stringify({ total }), {
+        status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    } catch (e) {
+      return new Response(JSON.stringify({ total: 0 }), {
+        status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
   }
 
-  // ── POST /api/stats — called after each successful sequence generation ────
+  // ── POST /api/stats — increment counter after each successful generation ──
   if (req.method === 'POST') {
     try {
-      const body = await req.json().catch(() => ({}));
-      const count = parseInt(body.count) || 1; // how many sequences in this batch call
+      const body  = await req.json().catch(() => ({}));
+      const count = parseInt(body.count) || 1;
 
-      // Increment counters
-      state.totalCount  += count;
-      state.hourlyCount += count;
+      const newTotal = await incrementTotal(count);
 
-      const now      = new Date();
-      const hourIdx  = Math.floor(now.getTime() / (1000 * 60 * 60)); // unique per hour
+      // Also flush hourly row to Google Sheets (fire and forget)
+      logHourlyToSheets(newTotal, count).catch(() => {});
 
-      // ── Flush to Google Sheets once per hour ──────────────────────────────
-      if (hourIdx !== state.lastFlushHour) {
-        state.lastFlushHour = hourIdx;
-        const snapshot = {
-          timestamp:    now.toISOString(),
-          hour_label:   formatHour(now),
-          hourly_count: state.hourlyCount,
-          total_count:  state.totalCount,
-        };
-        state.hourlyCount  = 0; // reset hourly counter after flush
-        state.lastFlushedAt = now.toISOString();
-
-        // Fire-and-forget to Sheets — don't await so we don't slow down the response
-        saveHourlyToSheets(snapshot).catch(e => console.error('Sheets flush error:', e));
-      }
-
-      return new Response(JSON.stringify({
-        ok:    true,
-        total: state.totalCount,
-      }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      return new Response(JSON.stringify({ ok: true, total: newTotal }), {
+        status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });
-
-    } catch (err) {
-      return new Response(JSON.stringify({ error: err.message }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    } catch (e) {
+      console.error('stats POST error:', e);
+      return new Response(JSON.stringify({ ok: false, error: e.message }), {
+        status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });
     }
   }
 
   return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-    status: 405,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    status: 405, headers: { 'Content-Type': 'application/json', ...corsHeaders }
   });
 }
 
-async function saveHourlyToSheets(data) {
+// ── Read current total from Supabase ─────────────────────────────────────────
+async function getTotal() {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/sequence_stats?id=eq.1&select=total_count`,
+    {
+      headers: {
+        'apikey':         SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+      }
+    }
+  );
+  const rows = await res.json();
+  return rows?.[0]?.total_count || 0;
+}
+
+// ── Atomically increment total in Supabase using RPC ─────────────────────────
+async function incrementTotal(by) {
+  // Use Supabase RPC to do an atomic increment (prevents race conditions)
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/increment_sequence_count`, {
+    method:  'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'apikey':         SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+    },
+    body: JSON.stringify({ increment_by: by })
+  });
+
+  // If RPC not available, fall back to read-then-write
+  if (!res.ok) {
+    const current = await getTotal();
+    const newTotal = current + by;
+    await fetch(`${SUPABASE_URL}/rest/v1/sequence_stats?id=eq.1`, {
+      method:  'PATCH',
+      headers: {
+        'Content-Type':  'application/json',
+        'apikey':         SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Prefer':         'return=representation',
+      },
+      body: JSON.stringify({ total_count: newTotal, updated_at: new Date().toISOString() })
+    });
+    return newTotal;
+  }
+
+  const data = await res.json();
+  return data?.total_count || (await getTotal());
+}
+
+// ── Log hourly snapshot to Google Sheets ─────────────────────────────────────
+async function logHourlyToSheets(total, added) {
   const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK;
   if (!webhookUrl) return;
+
+  const now = new Date();
+  // Only log once per hour — use hourly timestamp as dedup key
+  const hourKey = `${now.getUTCFullYear()}-${now.getUTCMonth()}-${now.getUTCDate()}-${now.getUTCHours()}`;
+  const lastHour = globalThis.__lastStatsHour;
+  if (lastHour === hourKey) return; // already logged this hour
+  globalThis.__lastStatsHour = hourKey;
 
   await fetch(webhookUrl, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ _type: 'stats', ...data }),
-  });
-}
-
-function formatHour(date) {
-  return date.toLocaleString('en-US', {
-    year:   'numeric',
-    month:  'short',
-    day:    'numeric',
-    hour:   '2-digit',
-    minute: '2-digit',
-    hour12: true,
+    body: JSON.stringify({
+      _type:        'stats',
+      timestamp:     now.toISOString(),
+      hour_label:    now.toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }),
+      hourly_count:  added,
+      total_count:   total,
+    })
   });
 }
