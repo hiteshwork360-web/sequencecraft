@@ -982,18 +982,44 @@ async function startGeneration(){
 }
 
 async function runGeneration(){
-  allResults=[]; currentIdx=0;
+  allResults = [];
+  currentIdx = 0;
+
+  // Pre-fill allResults with pending placeholders so nav renders immediately
+  prospects.forEach((p,i) => {
+    allResults.push({ prospect:p, prospect_name: nameFromEmail(p.email),
+      _status: 'pending', research_intel:{sources_used:[],signals:[],personalisation_hooks:[]}, emails:[] });
+  });
+
+  // Go to results panel and render the first (pending) view right away
   showPanel(4);
   initBatchBar();
-  for(let i=0;i<prospects.length;i++){
+  renderView(0);   // ← show UI immediately, even before any generation
+
+  // Now generate one by one — update UI after EACH one completes
+  for(let i=0; i<prospects.length; i++){
     startWorkingOverlay(i);
     updateBatchBar(i, true);
-    await generateFor(i);
+    await generateFor(i);       // fills allResults[i] with real data
     finishStepsDone();
     updateBatchBar(i+1, false);
+
+    // If user is currently viewing this prospect — refresh it live
+    if(currentIdx === i) renderView(i);
+
+    // Update the nav dots to show this one is done
+    refreshNavDot(i, 'done');
   }
+
   stopWorkingOverlay();
-  renderView(0);
+
+  // Final render of current view (in case user navigated away and back)
+  renderView(currentIdx);
+}
+
+function nameFromEmail(email){
+  return (email.split('@')[0]||'').replace(/[._\-0-9]/g,' ')
+    .replace(/\w/g,c=>c.toUpperCase()).trim() || 'there';
 }
 
 function initBatchBar(){
@@ -1013,6 +1039,15 @@ function updateBatchBar(done, hasActive){
     const el = document.getElementById('wost_'+i); if(!el) return;
     el.className = 'wo-status '+(i<done ? 'done' : i===done&&hasActive ? 'active' : 'pending');
   });
+}
+
+function refreshNavDot(idx, status){
+  const dots = document.getElementById('pnavDots');
+  if(!dots) return;
+  const dot = dots.children[idx];
+  if(!dot) return;
+  if(status === 'done') dot.style.background = 'var(--green)';
+  else if(status === 'active') dot.style.background = 'var(--accent)';
 }
 
 async function generateFor(idx){
@@ -1133,10 +1168,10 @@ Make the prospect think: "They actually know my world."`;
     const raw=data.content.map(b=>b.text||'').join('');
     const parsed=robustParseJSON(raw);
     if(!parsed) throw new Error('JSON parse failed after all recovery attempts');
-    allResults.push({prospect:p,...parsed});
+    allResults[idx] = {prospect:p, _status:'done', ...parsed};
   } catch(e){
     console.error('Generation failed for prospect',idx,e);
-    allResults.push({prospect:p,prospect_name:p.email.split('@')[0],research_intel:{sources_used:[],signals:[],personalisation_hooks:[]},emails:[]});
+    allResults[idx] = {prospect:p, _status:'failed', prospect_name:nameFromEmail(p.email), research_intel:{sources_used:[],signals:[],personalisation_hooks:[]},emails:[]};
   }
 }
 
@@ -1221,6 +1256,13 @@ function renderView(idx){
   if(!allResults[idx]) return;
   currentIdx=idx;
   const result=allResults[idx];
+
+  // If this prospect is still pending — show skeleton
+  if(result._status === 'pending'){
+    renderPendingView(idx);
+    return;
+  }
+
   const p=result.prospect;
   const theme=THEMES.find(t=>t.id===selectedTheme);
 
@@ -1238,9 +1280,7 @@ function renderView(idx){
   ].filter(Boolean).join('');
 
   // Dots
-  document.getElementById('pnavDots').innerHTML=allResults.map((_,i)=>
-    `<div class="pnav-dot ${i===idx?'active':''}" onclick="goToProspectIdx(${i})" title="Prospect ${i+1}"></div>`
-  ).join('');
+  renderNavDots(idx);
 
   // Intel
   const intel=result.research_intel||{};
@@ -1269,7 +1309,14 @@ function renderView(idx){
   // Emails
   const seq=document.getElementById('emailSequence');
   if(!result.emails||result.emails.length===0){
-    seq.innerHTML=`<div style="text-align:center;padding:48px;color:var(--text2);font-size:14px;">Generation failed for this prospect.<br><br><button onclick="regenerateCurrent()" style="background:var(--accent);border:none;color:#fff;padding:11px 22px;border-radius:var(--radius-sm);cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;">↺ Retry</button></div>`;
+    const isFailed = result._status === 'failed';
+    seq.innerHTML=`
+      <div style="text-align:center;padding:48px 24px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);">
+        <div style="font-size:36px;margin-bottom:14px;">${isFailed ? '⚠️' : '⏳'}</div>
+        <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;margin-bottom:8px;">${isFailed ? 'Generation failed' : 'Not generated yet'}</div>
+        <div style="color:var(--text2);font-size:13px;margin-bottom:24px;">${isFailed ? 'Something went wrong for this prospect.' : 'This prospect is queued and will generate shortly.'}</div>
+        ${isFailed ? `<button onclick="regenerateCurrent()" style="background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#fff;padding:12px 28px;border-radius:var(--radius-sm);cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;">↺ Retry This Prospect</button>` : ''}
+      </div>`;
     return;
   }
 
@@ -1309,6 +1356,49 @@ function renderView(idx){
   toggleCard(0);
 }
 
+// Show a pending / skeleton state while this prospect is being generated
+function renderPendingView(idx){
+  const p = prospects[idx];
+  const domain = getDomain(p.company_website) || p.email.split('@')[1] || '';
+  document.getElementById('pnavName').textContent = `Generating...  ·  ${domain}`;
+  document.getElementById('pnavCounter').textContent = `${idx+1} / ${prospects.length}`;
+  document.getElementById('prevBtn').disabled = idx===0;
+  document.getElementById('nextBtn').disabled = idx===prospects.length-1;
+  document.getElementById('pnavMeta').innerHTML = `<span class="pnav-meta-item">✉ ${esc(p.email)}</span>`;
+  document.getElementById('intelSub').textContent = 'Researching...';
+  document.getElementById('intelChips').innerHTML = '';
+  document.getElementById('intelItems').innerHTML = '<div style="color:var(--text3);font-size:12px;padding:4px 0;">Collecting signals — please wait...</div>';
+  document.getElementById('resultsMeta').textContent = 'Generating personalised sequence...';
+
+  // Show skeleton email cards
+  document.getElementById('emailSequence').innerHTML = [1,2,3,4,5].map(n=>`
+    <div class="email-card" style="opacity:.4;pointer-events:none;">
+      <div class="email-card-header" style="cursor:default;">
+        <div class="email-card-left">
+          <div class="email-num">${n}</div>
+          <div>
+            <div class="email-meta-title" style="background:var(--border);border-radius:4px;width:140px;height:14px;"></div>
+            <div class="email-meta-sub" style="background:var(--border);border-radius:4px;width:60px;height:10px;margin-top:6px;"></div>
+          </div>
+        </div>
+        <div class="email-badges"><span class="badge day">Day ${[1,3,7,12,18][n-1]}</span></div>
+        <div class="chevron">▼</div>
+      </div>
+    </div>`).join('');
+
+  // Render nav dots
+  renderNavDots(idx);
+}
+
+function renderNavDots(activeIdx){
+  document.getElementById('pnavDots').innerHTML = allResults.map((_,i)=>{
+    const status = allResults[i]?._status;
+    const color  = status==='done' ? 'var(--green)' : status==='failed' ? 'var(--accent2)' : i===activeIdx ? 'var(--accent)' : 'var(--border)';
+    const width  = i===activeIdx ? '20px' : '7px';
+    return `<div class="pnav-dot ${i===activeIdx?'active':''}" onclick="goToProspectIdx(${i})" title="Prospect ${i+1}" style="background:${color};width:${width};border-radius:${i===activeIdx?'4px':'50%'};"></div>`;
+  }).join('');
+}
+
 function navigateProspect(delta){
   const ni=currentIdx+delta;
   if(ni<0||ni>=allResults.length) return;
@@ -1321,10 +1411,18 @@ function toggleCard(i){document.getElementById('ecard_'+i)?.classList.toggle('op
 function toggleIntel(){document.getElementById('intelPanel').classList.toggle('open');}
 
 async function regenerateCurrent(){
-  updateBatchProgress(currentIdx,true);
-  await generateFor(currentIdx);
-  updateBatchProgress(currentIdx+1,false);
-  renderView(currentIdx);
+  const idx = currentIdx;
+  // Reset this prospect to pending before retry
+  allResults[idx]._status = 'pending';
+  renderView(idx); // show skeleton immediately
+
+  startWorkingOverlay(idx);
+  updateBatchBar(idx, true);
+  await generateFor(idx);
+  finishStepsDone();
+  updateBatchBar(idx+1, false);
+  stopWorkingOverlay();
+  renderView(idx); // render real result
 }
 
 // ═══════════════════════ COPY ════════════════════════
