@@ -508,6 +508,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;align-items:cen
           <div class="wo-statuses" id="woStatuses"></div>
         </div>
         <div class="wo-ticker" id="woTicker">Warming up the research engine…</div>
+        <div style="text-align:center;margin-top:8px;">
+          <button onclick="stopGeneration()" id="stopGenBtn" style="background:none;border:1px solid rgba(252,92,125,.35);color:var(--accent2);padding:8px 22px;border-radius:50px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;transition:all .2s;" onmouseover="this.style.background='rgba(252,92,125,.1)'" onmouseout="this.style.background='none'">⏹ Stop Generation</button>
+        </div>
       </div>
     </div>
 
@@ -974,6 +977,9 @@ function stopWorkingOverlay(){
   clearInterval(tickerInterval);
   clearInterval(stepInterval);
   document.getElementById('workingOverlay').style.display = 'none';
+  // Reset stop button for next run
+  const btn = document.getElementById('stopGenBtn');
+  if(btn){ btn.textContent = '⏹ Stop Generation'; btn.disabled = false; }
 }
 
 async function startGeneration(){
@@ -992,7 +998,11 @@ async function startGeneration(){
   await runGeneration();
 }
 
+// ── Generation stop flag ─────────────────────────────────────
+let _generationStopped = false;
+
 async function runGeneration(){
+  _generationStopped = false;
   allResults = [];
   currentIdx = 0;
 
@@ -1005,27 +1015,90 @@ async function runGeneration(){
   // Go to results panel and render the first (pending) view right away
   showPanel(4);
   initBatchBar();
-  renderView(0);   // ← show UI immediately, even before any generation
+  renderView(0);
 
-  // Now generate one by one — update UI after EACH one completes
+  // Generate one by one — with auto-retry + stop support
   for(let i=0; i<prospects.length; i++){
+
+    // ── Check stop flag before each prospect ──────────────────
+    if(_generationStopped){
+      // Mark remaining as cancelled
+      for(let j=i; j<prospects.length; j++){
+        allResults[j]._status = 'failed';
+        allResults[j].prospect_name = nameFromEmail(prospects[j].email);
+      }
+      break;
+    }
+
     startWorkingOverlay(i);
     updateBatchBar(i, true);
-    await generateFor(i);       // fills allResults[i] with real data
+
+    // ── First attempt ─────────────────────────────────────────
+    await generateFor(i);
+
+    // ── Auto-retry once if failed ─────────────────────────────
+    if(allResults[i]._status === 'failed' && !_generationStopped){
+      console.log(`[SequenceCraft] Auto-retrying prospect ${i+1}...`);
+      // Brief pause before retry — helps with rate limit recovery
+      await sleep(3000);
+      // Reset to pending before retry
+      allResults[i]._status = 'pending';
+      if(currentIdx === i) renderView(i);
+      await generateFor(i);
+    }
+
     finishStepsDone();
     updateBatchBar(i+1, false);
 
-    // If user is currently viewing this prospect — refresh it live
+    // Refresh current view if user is watching this prospect
     if(currentIdx === i) renderView(i);
-
-    // Update the nav dots to show this one is done
-    refreshNavDot(i, 'done');
+    refreshNavDot(i, allResults[i]._status === 'done' ? 'done' : 'failed');
   }
 
   stopWorkingOverlay();
-
-  // Final render of current view (in case user navigated away and back)
   renderView(currentIdx);
+
+  // Show completion summary
+  const done   = allResults.filter(r => r._status === 'done').length;
+  const failed = allResults.filter(r => r._status === 'failed').length;
+  if(_generationStopped){
+    showToast(`⏹ Stopped — ${done} sequence${done!==1?'s':''} generated, ${failed} skipped`);
+  } else if(failed > 0){
+    showToast(`✓ Done — ${done} generated, ${failed} failed (click ↺ Retry on each)`);
+  } else {
+    showToast(`✅ All ${done} sequence${done!==1?'s':''} generated successfully!`);
+  }
+}
+
+function stopGeneration(){
+  _generationStopped = true;
+  const btn = document.getElementById('stopGenBtn');
+  if(btn){ btn.textContent = '⏹ Stopping...'; btn.disabled = true; }
+}
+
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+// ── Toast notification ────────────────────────────────────────
+function showToast(msg){
+  // Remove existing toast
+  document.getElementById('scToast')?.remove();
+  const toast = document.createElement('div');
+  toast.id = 'scToast';
+  toast.textContent = msg;
+  toast.style.cssText = `
+    position:fixed; bottom:28px; left:50%; transform:translateX(-50%);
+    background:var(--surface); border:1px solid var(--border);
+    color:var(--text); padding:12px 24px; border-radius:50px;
+    font-size:13px; font-weight:500; font-family:'DM Sans',sans-serif;
+    box-shadow:0 8px 32px rgba(0,0,0,.4); z-index:500;
+    animation:fadeUp .3s ease;
+  `;
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transition = 'opacity .4s';
+    setTimeout(() => toast.remove(), 400);
+  }, 4000);
 }
 
 function nameFromEmail(email){
