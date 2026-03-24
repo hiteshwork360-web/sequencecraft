@@ -1135,83 +1135,135 @@ function refreshNavDot(idx, status){
 }
 
 async function generateFor(idx){
-  const p=prospects[idx];
-  const theme=THEMES.find(t=>t.id===selectedTheme);
-  const website=document.getElementById('websiteInput').value.trim();
-  const product=document.getElementById('productInput').value.trim();
-  const competitors=document.getElementById('competitorInput').value.trim();
-  const today=new Date();
-  const cutoff=new Date(today); cutoff.setMonth(today.getMonth()-3);
-  const dateRange=`${cutoff.toDateString()} – ${today.toDateString()}`;
-  const lenGuide={
-    short:'SHORT: 3–5 lines max. One idea, one CTA. Scannable in 10 seconds. No fluff.',
-    medium:'MEDIUM: 8–12 lines. Brief context, one key insight, clear CTA.',
-    long:'LONG: 15–20 lines. Full story arc, supporting proof/stats, detailed offer, clear CTA. Still no wasted words.'
+  const p       = prospects[idx];
+  const theme   = THEMES.find(t => t.id === selectedTheme);
+  const website = document.getElementById('websiteInput').value.trim();
+  const product = document.getElementById('productInput').value.trim();
+  const competitors = document.getElementById('competitorInput').value.trim();
+  const today   = new Date();
+  const cutoff  = new Date(today); cutoff.setMonth(today.getMonth() - 3);
+  const dateRange = `${cutoff.toDateString()} – ${today.toDateString()}`;
+  const lenGuide = {
+    short:  'SHORT: 3–5 lines max. One idea, one CTA. Scannable in 10 seconds.',
+    medium: 'MEDIUM: 8–12 lines. Brief context, one key insight, clear CTA.',
+    long:   'LONG: 15–20 lines. Full story arc, supporting proof/stats, clear CTA.'
   };
 
-  // Extract domains for explicit anchoring — prevents industry hallucination
-  const sellerDomain = getDomain(website) || website;
+  const sellerDomain  = getDomain(website) || website;
   const prospectDomain = p.company_website ? getDomain(p.company_website) : p.email.split('@')[1] || '';
-  const personaName = p.email.split('@')[0].replace(/[._\-0-9]/g,' ').replace(/\b\w/g,c=>c.toUpperCase()).trim();
+  const personaName   = p.email.split('@')[0].replace(/[._\-0-9]/g,' ').replace(/\b\w/g,c=>c.toUpperCase()).trim();
 
-  const sys=`You are a world-class B2B cold email ghostwriter and research analyst.
+  // ── PHASE 1: Real research (free web fetches, no Claude) ─────────────────
+  let realSignals   = [];
+  let sourcesUsed   = [];
+  try {
+    const researchRes = await fetch('/api/research', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        company_website:  p.company_website,
+        persona_linkedin: p.persona_linkedin,
+        company_linkedin: p.company_linkedin,
+        email:            p.email,
+      })
+    });
+    const researchData = await researchRes.json();
+    if (researchData.ok && researchData.signals?.length) {
+      realSignals = researchData.signals;
+      sourcesUsed = researchData.sources_used || [];
+    }
+  } catch(e) {
+    console.warn('Research phase failed silently:', e);
+    // Continue without real signals — Claude will still write good emails
+  }
+
+  // Format signals for prompt injection
+  const signalText = realSignals.length
+    ? realSignals.map(s => `• [${s.type}] ${s.text}${s.date ? ' ('+s.date+')' : ''}`).join('\n')
+    : 'No signals fetched — use domain inference only.';
+
+  // ── PHASE 2: Focused email writing (Claude call with real signals) ────────
+  const sys = `You are a world-class B2B cold email ghostwriter.
 
 IDENTITY RULES (never violate):
-- SELLER = company in SELLER INFO. Emails are FROM them. Never change their industry/product.
+- SELLER = company in SELLER INFO. Emails are FROM them. Never change their industry.
 - PROSPECT = company in PROSPECT INFO. Emails are TO them.
-- Research signals must be ABOUT THE PROSPECT, not the seller.
 
-TASK:
-1. RESEARCH: Infer 3-5 credible signals about the prospect's world (website, LinkedIn, news, industry trends) from the last 3 months.
-2. WRITE: Use those signals as hooks in 5 emails written BY the seller TO the prospect.
+TASK: Write 5 cold emails using the REAL SIGNALS provided below.
+Each email must reference at least one specific real signal as a hook.
+Goal: get a reply OR book a demo.
 
 EMAIL RULES:
-- Each email references at least one specific personalised signal
-- Goal: get a reply OR book a demo
 - No filler: leverage, synergy, circle back, hope this finds you well
-- Email 1 (Day 1): Hook only — no pitch
-- Email 2 (Day 3): Insight specific to prospect
+- Email 1 (Day 1): Hook only — no pitch, build curiosity
+- Email 2 (Day 3): Insight tied to a real signal
 - Email 3 (Day 7): Clear pitch + CTA
 - Email 4 (Day 12): Different angle
 - Email 5 (Day 18): Breakup — low pressure
 
-JSON RULES: Respond ONLY with valid JSON starting with {. Use \n for line breaks in body strings. No raw newlines. No unescaped quotes.
+JSON RULES: Valid JSON only, start with {. Use \n for line breaks in body. No raw newlines.
 
-{"prospect_name":"first name from email","research_intel":{"sources_used":["news","linkedin_personal","linkedin_company","company_website"],"signals":[{"type":"news|linkedin|website|social","icon":"emoji","text":"signal about prospect","source":"where found"}],"personalisation_hooks":["hook1","hook2"]},"emails":[{"number":1,"title":"short title","subject":"subject under 50 chars","is_thread":false,"thread_reason":"why","send_day":"Day 1","body":"email body using \n for line breaks","cta_goal":"reply or demo"}]}`
-  const usr=`SELLER: ${sellerDomain} | ${website}
+{"emails":[{"number":1,"title":"short title","subject":"subject under 50 chars","is_thread":false,"thread_reason":"why","send_day":"Day 1","body":"email body","cta_goal":"reply or demo"}]}`;
+
+  const usr = `SELLER: ${sellerDomain} | ${website}
 Product: ${product}
-Competitors: ${competitors||'none'}
+Competitors: ${competitors || 'none'}
 Theme: ${theme.name} — ${theme.prompt}
 Length: ${lenGuide[selectedLength]}
 
 PROSPECT: ${personaName} | ${p.email}
-Company domain: ${prospectDomain}
-Company website: ${p.company_website||prospectDomain}
-Personal LinkedIn: ${p.persona_linkedin||'not provided'}
-Company LinkedIn: ${p.company_linkedin||'not provided'}
+Company: ${prospectDomain}
+Website: ${p.company_website || prospectDomain}
+LinkedIn: ${p.persona_linkedin || 'not provided'}
+Company LI: ${p.company_linkedin || 'not provided'}
 
-Research window: ${dateRange}
-Research the prospect's world at domain "${prospectDomain}" — website, LinkedIn activity, news, hiring signals, industry trends.
-All signals must be about THE PROSPECT. The seller (${sellerDomain}) is NOT the research subject.
-Hook each of the 5 emails to a specific signal. Make the prospect think: "They know my world."`
+REAL SIGNALS FETCHED (use these, do not invent new ones):
+${signalText}
 
-  try{
-    const resp=await fetch('/api/generate',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,system:sys,messages:[{role:'user',content:usr}]})
+Write emails that make the prospect think: "They actually know my world."`;
+
+  try {
+    const resp = await fetch('/api/generate', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        model:      'claude-sonnet-4-20250514',
+        max_tokens: 7000,
+        system:     sys,
+        messages:   [{ role: 'user', content: usr }]
+      })
     });
-    const data=await resp.json();
-    const raw=data.content.map(b=>b.text||'').join('');
-    const parsed=robustParseJSON(raw);
-    if(!parsed) throw new Error('JSON parse failed after all recovery attempts');
-    allResults[idx] = {prospect:p, _status:'done', ...parsed};
-    trackSequenceGenerated(1); // increment counter after each successful generation
-  } catch(e){
-    console.error('Generation failed for prospect',idx,e);
-    allResults[idx] = {prospect:p, _status:'failed', prospect_name:nameFromEmail(p.email), research_intel:{sources_used:[],signals:[],personalisation_hooks:[]},emails:[]};
+    const data   = await resp.json();
+    const raw    = data.content.map(b => b.text || '').join('');
+    const parsed = robustParseJSON(raw);
+    if (!parsed) throw new Error('JSON parse failed');
+
+    // Attach real research intel to result
+    allResults[idx] = {
+      prospect:       p,
+      _status:        'done',
+      prospect_name:  personaName || 'there',
+      research_intel: {
+        sources_used:        sourcesUsed,
+        signals:             realSignals,
+        personalisation_hooks: realSignals.slice(0,2).map(s => s.text),
+      },
+      emails: parsed.emails || [],
+    };
+    trackSequenceGenerated(1);
+
+  } catch(e) {
+    console.error('Generation failed for prospect', idx, e);
+    allResults[idx] = {
+      prospect:      p,
+      _status:       'failed',
+      prospect_name: nameFromEmail(p.email),
+      research_intel:{ sources_used:[], signals:[], personalisation_hooks:[] },
+      emails:        [],
+    };
   }
 }
+
 
 // ─── robust JSON parser with progressive recovery ───────────────
 function robustParseJSON(raw){
