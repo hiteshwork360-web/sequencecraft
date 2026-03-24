@@ -6,10 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-// Shared OTP store — same Edge instance as send-otp.js
-// Uses a global Map so OTPs persist across requests within the same instance
-const otpStore = globalThis.__otpStore || (globalThis.__otpStore = new Map());
-
 export default async function handler(req) {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
   if (req.method !== 'POST') return new Response(JSON.stringify({ error: 'Method not allowed' }), {
@@ -25,47 +21,74 @@ export default async function handler(req) {
       });
     }
 
-    const cleanPhone = phone.trim().replace(/\s+/g, '');
+    const cleanPhone     = phone.trim().replace(/\s+/g, '');
     const formattedPhone = cleanPhone.startsWith('+') ? cleanPhone : '+' + cleanPhone;
 
-    const record = globalThis.__otpStore?.get(formattedPhone);
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
 
-    // No OTP found for this number
-    if (!record) {
+    // Fetch the OTP record from Supabase
+    const fetchRes = await fetch(
+      `${supabaseUrl}/rest/v1/otp_store?phone=eq.${encodeURIComponent(formattedPhone)}&select=*`,
+      {
+        headers: {
+          'apikey':         supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+        },
+      }
+    );
+
+    const rows = await fetchRes.json();
+
+    // No record found
+    if (!rows || rows.length === 0) {
       return new Response(JSON.stringify({ ok: false, error: 'No OTP found. Please request a new code.' }), {
         status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });
     }
 
+    const record = rows[0];
+
     // Check expiry
-    if (Date.now() > record.expires) {
-      globalThis.__otpStore.delete(formattedPhone);
+    if (Date.now() > record.expires_at) {
+      // Delete expired record
+      await deleteOtp(supabaseUrl, supabaseKey, formattedPhone);
       return new Response(JSON.stringify({ ok: false, error: 'Code expired. Please request a new one.' }), {
         status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });
     }
 
-    // Rate limit — max 5 attempts per OTP
+    // Too many attempts
     if (record.attempts >= 5) {
-      globalThis.__otpStore.delete(formattedPhone);
+      await deleteOtp(supabaseUrl, supabaseKey, formattedPhone);
       return new Response(JSON.stringify({ ok: false, error: 'Too many attempts. Please request a new code.' }), {
         status: 429, headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });
     }
 
-    // Wrong code
+    // Wrong code — increment attempts
     if (otp.trim() !== record.otp) {
-      record.attempts++;
+      await fetch(`${supabaseUrl}/rest/v1/otp_store?phone=eq.${encodeURIComponent(formattedPhone)}`, {
+        method:  'PATCH',
+        headers: {
+          'Content-Type':  'application/json',
+          'apikey':         supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+        },
+        body: JSON.stringify({ attempts: record.attempts + 1 }),
+      });
+
+      const remaining = 5 - (record.attempts + 1);
       return new Response(JSON.stringify({
-        ok: false,
-        error: `Incorrect code. ${5 - record.attempts} attempt${5 - record.attempts !== 1 ? 's' : ''} remaining.`
+        ok:    false,
+        error: `Incorrect code. ${remaining} attempt${remaining !== 1 ? 's' : ''} remaining.`
       }), {
         status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });
     }
 
-    // ✅ Correct — delete OTP so it can't be reused
-    globalThis.__otpStore.delete(formattedPhone);
+    // Correct — delete OTP so it cannot be reused
+    await deleteOtp(supabaseUrl, supabaseKey, formattedPhone);
 
     return new Response(JSON.stringify({ ok: true, message: 'Phone verified successfully' }), {
       status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders }
@@ -77,4 +100,14 @@ export default async function handler(req) {
       status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders }
     });
   }
+}
+
+async function deleteOtp(supabaseUrl, supabaseKey, phone) {
+  await fetch(`${supabaseUrl}/rest/v1/otp_store?phone=eq.${encodeURIComponent(phone)}`, {
+    method:  'DELETE',
+    headers: {
+      'apikey':         supabaseKey,
+      'Authorization': `Bearer ${supabaseKey}`,
+    },
+  });
 }
