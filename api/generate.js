@@ -15,13 +15,13 @@ const REQUIRED_SYSTEM_PHRASES = [
   'ghostwriter',
   'SELLER',
   'PROSPECT',
-  'research_intel',
+  'reply OR book a demo',
 ];
 
 const REQUIRED_USER_PHRASES = [
   'SELLER:',
   'PROSPECT:',
-  'Research window',
+  'REAL SIGNALS',
 ];
 
 const BLOCKED_PHRASES = [
@@ -49,7 +49,7 @@ const ALLOWED_MODELS = [
   'claude-haiku-4-5-20251001',
 ];
 
-const MAX_TOKENS_ALLOWED = 2000; // never let a caller request more than we need
+const MAX_TOKENS_ALLOWED = 7000; // raised to match real output size (~5,600 tokens avg)
 const MAX_BODY_CHARS     = 20000; // reject suspiciously large payloads
 
 function gatekeeper(body) {
