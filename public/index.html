@@ -288,6 +288,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;align-items:cen
 .otp-box:focus{border-color:var(--accent);background:rgba(124,92,252,.08);}
 .otp-box.filled{border-color:var(--accent);}
 
+
+/* ── NAV COUNTER ── */
+.nav-counter{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--text2);background:rgba(124,92,252,.08);border:1px solid rgba(124,92,252,.2);padding:6px 14px;border-radius:50px;letter-spacing:.2px;}
+.nav-counter-dot{width:7px;height:7px;border-radius:50%;background:var(--green);position:relative;flex-shrink:0;}
+.nav-counter-dot::after{content:'';position:absolute;inset:-3px;border-radius:50%;background:rgba(76,252,140,.35);animation:pulse 2s infinite;}
+#navCountNum{color:var(--text);font-family:'Syne',sans-serif;font-size:13px;font-weight:800;}
+
 </style>
   <!-- Vercel Analytics -->
   <script defer src="/_vercel/insights/script.js"></script>
@@ -296,6 +303,10 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;align-items:cen
 
 <nav>
   <div class="nav-logo">Sequence<span>Craft</span></div>
+  <div class="nav-counter" id="navCounter" style="display:none;">
+    <span class="nav-counter-dot"></span>
+    <span id="navCountNum">0</span> sequences generated
+  </div>
   <div class="nav-links">
     <button class="nav-btn" onclick="resetTool()">↩ New</button>
     <button class="nav-btn primary" onclick="openFeedback()">💬 Feedback</button>
@@ -1169,6 +1180,7 @@ Make the prospect think: "They actually know my world."`;
     const parsed=robustParseJSON(raw);
     if(!parsed) throw new Error('JSON parse failed after all recovery attempts');
     allResults[idx] = {prospect:p, _status:'done', ...parsed};
+    trackSequenceGenerated(1); // increment counter after each successful generation
   } catch(e){
     console.error('Generation failed for prospect',idx,e);
     allResults[idx] = {prospect:p, _status:'failed', prospect_name:nameFromEmail(p.email), research_intel:{sources_used:[],signals:[],personalisation_hooks:[]},emails:[]};
@@ -1637,6 +1649,75 @@ async function saveLeadToSheets(data){
   } catch(e){ console.warn('Lead save failed silently:',e); }
 }
 // ═════════════════════════════════════════════════════════════
+
+
+// ═══════════════════════ SEQUENCE COUNTER ════════════════════════
+let _localCount = 0; // local session count used for animation
+
+async function trackSequenceGenerated(count){
+  _localCount += count;
+  try{
+    const res  = await fetch('/api/stats', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ count })
+    });
+    const data = await res.json();
+    if(data.total) animateCounter(data.total);
+  } catch(e){
+    // fail silently — never break UX for analytics
+    console.warn('Stats tracking failed:', e);
+  }
+}
+
+async function fetchAndShowCounter(){
+  try{
+    const res  = await fetch('/api/stats');
+    const data = await res.json();
+    if(data.total !== undefined){
+      showCounter(data.total);
+    }
+  } catch(e){ /* silent */ }
+}
+
+function showCounter(total){
+  const el = document.getElementById('navCounter');
+  if(!el) return;
+  // Only show if at least 1 sequence has been generated
+  if(total < 1) return;
+  el.style.display = 'flex';
+  document.getElementById('navCountNum').textContent = formatCount(total);
+}
+
+function animateCounter(target){
+  const el = document.getElementById('navCountNum');
+  const wrap = document.getElementById('navCounter');
+  if(!el || !wrap) return;
+  wrap.style.display = 'flex';
+
+  const start    = parseInt(el.textContent.replace(/,/g,'')) || 0;
+  const duration = 1200; // ms
+  const steps    = 40;
+  const increment = (target - start) / steps;
+  let current = start;
+  let step    = 0;
+
+  const timer = setInterval(() => {
+    step++;
+    current = step < steps ? start + increment * step : target;
+    el.textContent = formatCount(Math.round(current));
+    if(step >= steps) clearInterval(timer);
+  }, duration / steps);
+}
+
+function formatCount(n){
+  // Format: 1234 → "1,234" | 12345 → "12,345"
+  return n.toLocaleString('en-US');
+}
+
+// Fetch counter on page load
+fetchAndShowCounter();
+// ══════════════════════════════════════════════════════════════════
 
 </script>
 
