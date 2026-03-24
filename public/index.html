@@ -1383,8 +1383,9 @@ addManualRow();
 
 // ═══════════════════════ SIGNUP GATE ═════════════════════════
 let pendingGeneration = false;
-let generatedOtp      = '';
 let signupData        = {};
+let sgSending         = false;
+let sgVerifying       = false;
 
 function openSignupModal(){
   document.getElementById('signupStep1').style.display = 'block';
@@ -1399,11 +1400,13 @@ function closeSignupModal(){
   document.getElementById('signupModal').classList.remove('open');
 }
 
-function submitSignupStep1(){
+async function submitSignupStep1(){
+  if(sgSending) return;
   const name  = document.getElementById('sgName').value.trim();
   const email = document.getElementById('sgEmail').value.trim();
   const phone = document.getElementById('sgPhone').value.trim();
   const err   = document.getElementById('sgStep1Error');
+  const btn   = document.getElementById('sgStep1Btn');
   if(!name || !email || !phone || !email.includes('@')){
     err.style.display = 'block';
     err.textContent   = 'Please fill in all fields with a valid email.';
@@ -1411,85 +1414,129 @@ function submitSignupStep1(){
   }
   err.style.display = 'none';
   signupData = { name, email, phone };
-  generatedOtp = String(Math.floor(100000 + Math.random() * 900000));
-  console.log('[SequenceCraft] OTP:', generatedOtp);
-  document.getElementById('sgPhoneDisplay').textContent = phone;
-  document.getElementById('signupStep1').style.display = 'none';
-  document.getElementById('signupStep2').style.display = 'block';
-  setTimeout(() => {
-    const boxes = document.querySelectorAll('.otp-box');
-    if(boxes[0]) boxes[0].focus();
-  }, 100);
+  sgSending        = true;
+  btn.textContent  = 'Sending code...';
+  btn.disabled     = true;
+  try{
+    const res  = await fetch('/api/send-otp', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ phone })
+    });
+    const data = await res.json();
+    if(!res.ok || !data.ok){
+      err.style.display = 'block';
+      err.textContent   = data.error || 'Failed to send SMS. Make sure phone includes country code e.g. +91 98765 43210';
+      btn.textContent   = 'Send Verification Code →';
+      btn.disabled      = false;
+      sgSending         = false;
+      return;
+    }
+    document.getElementById('sgPhoneDisplay').textContent = phone;
+    document.getElementById('signupStep1').style.display  = 'none';
+    document.getElementById('signupStep2').style.display  = 'block';
+    setTimeout(()=>{ const b=document.querySelectorAll('.otp-box'); if(b[0]) b[0].focus(); },100);
+  } catch(e){
+    err.style.display = 'block';
+    err.textContent   = 'Network error. Please try again.';
+  }
+  sgSending       = false;
+  btn.textContent = 'Send Verification Code →';
+  btn.disabled    = false;
 }
 
 function otpNext(el, idx){
+  el.value = el.value.replace(/[^0-9]/g,'');
   el.classList.toggle('filled', el.value.length > 0);
   if(el.value.length === 1){
     const boxes = document.querySelectorAll('.otp-box');
-    if(idx < 5) boxes[idx + 1].focus();
+    if(idx < 5) boxes[idx+1].focus();
     else submitSignupStep2();
   }
 }
 
-function resendOtp(){
-  generatedOtp = String(Math.floor(100000 + Math.random() * 900000));
-  console.log('[SequenceCraft] New OTP:', generatedOtp);
-  document.querySelectorAll('.otp-box').forEach(b => { b.value = ''; b.classList.remove('filled'); });
+async function resendOtp(){
   const err = document.getElementById('sgStep2Error');
-  err.style.cssText = 'display:block;background:rgba(76,252,140,.08);border-color:rgba(76,252,140,.3);color:var(--green)';
-  err.textContent = 'New code sent! Check browser console for the code.';
-  setTimeout(() => { err.style.cssText = 'display:none'; }, 3000);
+  document.querySelectorAll('.otp-box').forEach(b=>{ b.value=''; b.classList.remove('filled'); });
+  err.style.cssText = 'display:block;background:rgba(124,92,252,.08);border-color:rgba(124,92,252,.3);color:var(--accent)';
+  err.textContent   = 'Sending new code...';
+  try{
+    const res  = await fetch('/api/send-otp',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ phone: signupData.phone })
+    });
+    const data = await res.json();
+    if(res.ok && data.ok){
+      err.style.cssText = 'display:block;background:rgba(76,252,140,.08);border-color:rgba(76,252,140,.3);color:var(--green)';
+      err.textContent   = 'New code sent to your phone!';
+    } else {
+      err.style.cssText = '';
+      err.style.display = 'block';
+      err.textContent   = data.error || 'Failed to resend. Please try again.';
+    }
+  } catch(e){
+    err.style.cssText = ''; err.style.display = 'block';
+    err.textContent   = 'Network error. Please try again.';
+  }
+  setTimeout(()=>{ err.style.cssText='display:none'; }, 3000);
   document.querySelectorAll('.otp-box')[0].focus();
 }
 
 async function submitSignupStep2(){
+  if(sgVerifying) return;
   const boxes   = document.querySelectorAll('.otp-box');
-  const entered = Array.from(boxes).map(b => b.value).join('');
+  const entered = Array.from(boxes).map(b=>b.value).join('');
   const err     = document.getElementById('sgStep2Error');
+  const btn     = document.getElementById('sgStep2Btn');
   if(entered.length < 6){
-    err.style.cssText = '';
-    err.style.display = 'block';
+    err.style.cssText = ''; err.style.display = 'block';
     err.textContent   = 'Please enter all 6 digits.';
     return;
   }
-  if(entered !== generatedOtp){
-    err.style.cssText = '';
-    err.style.display = 'block';
-    err.textContent   = 'Incorrect code. Hint: check browser console (F12) for the code.';
-    boxes.forEach(b => { b.value = ''; b.classList.remove('filled'); });
-    boxes[0].focus();
-    return;
-  }
-  localStorage.setItem('sc_verified', '1');
-  localStorage.setItem('sc_user', JSON.stringify(signupData));
-  document.getElementById('signupStep2').style.display = 'none';
-  document.getElementById('signupStep3').style.display = 'block';
-  saveLeadToSheets(signupData);
-  setTimeout(async () => {
-    closeSignupModal();
-    if(pendingGeneration){
-      pendingGeneration = false;
-      await runGeneration();
+  sgVerifying     = true;
+  btn.textContent = 'Verifying...';
+  btn.disabled    = true;
+  try{
+    const res  = await fetch('/api/verify-otp',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ phone: signupData.phone, otp: entered })
+    });
+    const data = await res.json();
+    if(!res.ok || !data.ok){
+      err.style.cssText = ''; err.style.display = 'block';
+      err.textContent   = data.error || 'Incorrect code. Please try again.';
+      boxes.forEach(b=>{ b.value=''; b.classList.remove('filled'); });
+      boxes[0].focus();
+      btn.textContent = 'Verify & Unlock →';
+      btn.disabled    = false;
+      sgVerifying     = false;
+      return;
     }
-  }, 1800);
+    localStorage.setItem('sc_verified','1');
+    localStorage.setItem('sc_user', JSON.stringify(signupData));
+    document.getElementById('signupStep2').style.display = 'none';
+    document.getElementById('signupStep3').style.display = 'block';
+    saveLeadToSheets(signupData);
+    setTimeout(async()=>{
+      closeSignupModal();
+      if(pendingGeneration){ pendingGeneration=false; await runGeneration(); }
+    }, 1800);
+  } catch(e){
+    err.style.cssText = ''; err.style.display = 'block';
+    err.textContent   = 'Network error. Please try again.';
+    btn.textContent   = 'Verify & Unlock →';
+    btn.disabled      = false;
+  }
+  sgVerifying = false;
 }
 
 async function saveLeadToSheets(data){
   try{
-    await fetch('/api/save-lead', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name:      data.name,
-        email:     data.email,
-        phone:     data.phone,
-        timestamp: new Date().toISOString(),
-        source:    'SequenceCraft',
-      })
+    await fetch('/api/save-lead',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name:data.name, email:data.email, phone:data.phone,
+        timestamp:new Date().toISOString(), source:'SequenceCraft' })
     });
-  } catch(e){
-    console.warn('Lead save failed silently:', e);
-  }
+  } catch(e){ console.warn('Lead save failed silently:',e); }
 }
 // ═════════════════════════════════════════════════════════════
 
