@@ -1081,99 +1081,52 @@ async function generateFor(idx){
   const prospectDomain = p.company_website ? getDomain(p.company_website) : p.email.split('@')[1] || '';
   const personaName = p.email.split('@')[0].replace(/[._\-0-9]/g,' ').replace(/\b\w/g,c=>c.toUpperCase()).trim();
 
-  const sys=`You are a world-class B2B cold email ghost writer and research analyst.
+  const sys=`You are a world-class B2B cold email ghostwriter and research analyst.
 
-══ ABSOLUTE IDENTITY RULES — READ FIRST, NEVER VIOLATE ══
-1. THE SELLER is the company described in SELLER INFO below. Every email is written FROM them. You must never invent a different seller, a different product, or a different industry for the sender.
-2. THE PROSPECT is the person/company described in PROSPECT INFO below. You are writing TO them.
-3. GROUND TRUTH: The seller's product description is the single source of truth. Do not override it, do not blend it with the prospect's industry, do not confuse the two parties.
-4. If the seller is a B2B SaaS company, every email must be FROM a B2B SaaS company. If the seller is an AI implementation firm, every email is FROM an AI implementation firm. Never drift.
-5. Research signals must be ABOUT THE PROSPECT (their company, their role, their industry) — not about the seller.
+IDENTITY RULES (never violate):
+- SELLER = company in SELLER INFO. Emails are FROM them. Never change their industry/product.
+- PROSPECT = company in PROSPECT INFO. Emails are TO them.
+- Research signals must be ABOUT THE PROSPECT, not the seller.
 
-══ YOUR TWO-PART TASK ══
-PART 1 — RESEARCH: Infer credible signals about the PROSPECT's world (their company website domain, their LinkedIn profile, recent industry news in THEIR sector, their company's likely challenges). Research window: last 3 months.
-PART 2 — WRITE: Use those signals as personalisation hooks in 5 emails, each written by the SELLER pitching THEIR product to the PROSPECT.
+TASK:
+1. RESEARCH: Infer 3-5 credible signals about the prospect's world (website, LinkedIn, news, industry trends) from the last 3 months.
+2. WRITE: Use those signals as hooks in 5 emails written BY the seller TO the prospect.
 
-══ EMAIL RULES ══
-- Every email references at least one specific personalised detail from PART 1 research
-- Never sound like a template
+EMAIL RULES:
+- Each email references at least one specific personalised signal
 - Goal: get a reply OR book a demo
-- Avoid all corporate filler: leverage, synergy, circle back, hope this finds you well
-- Email 1 (Day 1): Hook/curiosity only — no pitch, earn trust
-- Email 2 (Day 3): Deliver insight specific to the PROSPECT's situation
-- Email 3 (Day 7): Real pitch — clear offer from the SELLER, clear CTA
-- Email 4 (Day 12): Completely different angle
-- Email 5 (Day 18): Breakup email — memorable, low pressure
+- No filler: leverage, synergy, circle back, hope this finds you well
+- Email 1 (Day 1): Hook only — no pitch
+- Email 2 (Day 3): Insight specific to prospect
+- Email 3 (Day 7): Clear pitch + CTA
+- Email 4 (Day 12): Different angle
+- Email 5 (Day 18): Breakup — low pressure
 
-Respond ONLY with valid JSON. Zero markdown. Zero preamble. Start directly with {
+JSON RULES: Respond ONLY with valid JSON starting with {. Use \n for line breaks in body strings. No raw newlines. No unescaped quotes.
 
-CRITICAL JSON FORMATTING RULES:
-- The "body" field contains the full email. Use \n for line breaks inside the body string — never insert raw newlines.
-- Never use unescaped double quotes inside any string value. Use single quotes or rephrase.
-- Every string value must be on one line from the JSON parser's perspective (newlines encoded as \n).
-- Validate mentally that your JSON would pass JSON.parse() before outputting.
+{"prospect_name":"first name from email","research_intel":{"sources_used":["news","linkedin_personal","linkedin_company","company_website"],"signals":[{"type":"news|linkedin|website|social","icon":"emoji","text":"signal about prospect","source":"where found"}],"personalisation_hooks":["hook1","hook2"]},"emails":[{"number":1,"title":"short title","subject":"subject under 50 chars","is_thread":false,"thread_reason":"why","send_day":"Day 1","body":"email body using \n for line breaks","cta_goal":"reply or demo"}]}`
+  const usr=`SELLER: ${sellerDomain} | ${website}
+Product: ${product}
+Competitors: ${competitors||'none'}
+Theme: ${theme.name} — ${theme.prompt}
+Length: ${lenGuide[selectedLength]}
 
-{
-  "prospect_name": "first name inferred from email prefix",
-  "research_intel": {
-    "sources_used": ["news","linkedin_personal","linkedin_company","company_website"],
-    "signals": [
-      {"type":"news|linkedin|website|social","icon":"emoji","text":"specific signal about THE PROSPECT","source":"where found"}
-    ],
-    "personalisation_hooks": ["hook used in email 1","hook used in email 2"]
-  },
-  "emails": [
-    {
-      "number": 1,
-      "title": "short descriptive title",
-      "subject": "subject under 50 chars",
-      "is_thread": false,
-      "thread_reason": "why thread or standalone",
-      "send_day": "Day 1",
-      "body": "full email body",
-      "cta_goal": "reply or demo — one liner"
-    }
-  ]
-}`;
+PROSPECT: ${personaName} | ${p.email}
+Company domain: ${prospectDomain}
+Company website: ${p.company_website||prospectDomain}
+Personal LinkedIn: ${p.persona_linkedin||'not provided'}
+Company LinkedIn: ${p.company_linkedin||'not provided'}
 
-  const usr=`══ SELLER INFO (the company sending these emails) ══
-Company domain: ${sellerDomain}
-Full website URL: ${website}
-What they sell: ${product}
-Competitors of the seller: ${competitors||'Not specified'}
-Email theme: ${theme.name} — ${theme.prompt}
-Email length requirement: ${lenGuide[selectedLength]}
-
-══ PROSPECT INFO (the person/company receiving these emails) ══
-Prospect email: ${p.email}
-Inferred first name: ${personaName}
-Prospect's company domain: ${prospectDomain}
-Prospect's company full website: ${p.company_website||'Not provided — infer industry from email domain: '+prospectDomain}
-Prospect's personal LinkedIn: ${p.persona_linkedin||'Not provided — infer role/seniority from email prefix and company domain'}
-Prospect's company LinkedIn: ${p.company_linkedin||'Not provided — infer company size/industry from domain'}
-
-══ RESEARCH DIRECTIVE ══
 Research window: ${dateRange}
-
-Using the prospect's company domain "${prospectDomain}", simulate having researched:
-1. Their company website (${p.company_website||prospectDomain}) — recent blog posts, product pages, press releases, leadership team
-2. Personal LinkedIn of "${personaName}" at "${prospectDomain}" — recent posts, activity, role, tenure
-3. Company LinkedIn of "${prospectDomain}" — funding, hiring trends, awards, announcements
-4. Web news about "${prospectDomain}" or "${personaName}" — any coverage in last 3 months
-5. Industry trends in THEIR sector (the prospect's sector, not the seller's)
-
-CRITICAL: All research signals must be about the PROSPECT's company and world.
-The SELLER (${sellerDomain}) is NOT the research subject — they are the sender.
-
-Derive a specific, believable signal for each email. Each signal should explain a real pain or trigger in the prospect's world that the seller's product (${product.slice(0,80)}...) can solve.
-
-Make the prospect think: "They actually know my world."`;
+Research the prospect's world at domain "${prospectDomain}" — website, LinkedIn activity, news, hiring signals, industry trends.
+All signals must be about THE PROSPECT. The seller (${sellerDomain}) is NOT the research subject.
+Hook each of the 5 emails to a specific signal. Make the prospect think: "They know my world."`
 
   try{
     const resp=await fetch('/api/generate',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4000,system:sys,messages:[{role:'user',content:usr}]})
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,system:sys,messages:[{role:'user',content:usr}]})
     });
     const data=await resp.json();
     const raw=data.content.map(b=>b.text||'').join('');
