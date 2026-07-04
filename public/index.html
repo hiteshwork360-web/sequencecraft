@@ -326,6 +326,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;align-items:cen
 
 
 
+
 <nav>
   <div class="nav-logo">Sequence<span>Craft</span></div>
   <div class="nav-counter" id="navCounter" style="display:none;">
@@ -1054,131 +1055,141 @@ async function runGeneration(){
   allResults = [];
   currentIdx = 0;
 
-  // Pre-fill allResults with pending placeholders
+  // Pre-fill with pending placeholders
   prospects.forEach((p,i) => {
-    allResults.push({ prospect:p, prospect_name:nameFromEmail(p.email),
-      _status:'pending', research_intel:{sources_used:[],signals:[],personalisation_hooks:[]}, emails:[] });
+    allResults.push({
+      prospect:       p,
+      prospect_name:  nameFromEmail(p.email),
+      _status:        'pending',
+      research_intel: {sources_used:[],signals:[],personalisation_hooks:[]},
+      emails:         []
+    });
   });
 
   showPanel(4);
   initBatchBar();
   renderView(0);
 
-  for(let i=0; i<prospects.length; i++){
+  // Save initial state immediately
+  saveProgressToStorage();
 
-    if(_generationStopped){
-      for(let j=i; j<prospects.length; j++){
-        allResults[j]._status = 'cancelled';
-      }
-      break;
-    }
+  // Run in chunks of 5 — prevents rate limit buildup
+  const CHUNK_SIZE = 5;
+  let chunkStart = 0;
 
-    startWorkingOverlay(i);
-    updateBatchBar(i, true);
+  while(chunkStart < prospects.length && !_generationStopped){
+    const chunkEnd = Math.min(chunkStart + CHUNK_SIZE, prospects.length);
 
-    // ── Paced delay between calls to avoid rate limits ────────
-    // After every 5 prospects, pause 4 seconds to let rate limit window breathe
-    if(i > 0 && i % 5 === 0 && !_generationStopped){
-      updateBatchStatusMsg(`Pausing briefly to stay within API limits... (${i}/${prospects.length} done)`);
-      await sleep(4000);
-    }
+    // Process this chunk
+    for(let i = chunkStart; i < chunkEnd; i++){
+      if(_generationStopped) break;
 
-    // ── First attempt ─────────────────────────────────────────
-    await generateFor(i);
+      startWorkingOverlay(i);
+      updateBatchBar(i, true);
 
-    // ── Auto-retry once if failed (with longer pause) ─────────
-    if(allResults[i]._status === 'failed' && !_generationStopped){
-      console.log(`[SequenceCraft] Auto-retrying prospect ${i+1} after 6s...`);
-      await sleep(6000);
-      allResults[i]._status = 'pending';
-      if(currentIdx === i) renderView(i);
+      // Generate with 2s gap between each call
+      if(i > chunkStart) await sleep(2000);
+
       await generateFor(i);
-    }
 
-    finishStepsDone();
-    updateBatchBar(i+1, false);
+      // Auto-retry once on failure with 8s pause
+      if(allResults[i]._status === 'failed' && !_generationStopped){
+        console.log(`[SC] Retrying ${i+1} after 8s...`);
+        await sleep(8000);
+        allResults[i]._status = 'pending';
+        if(currentIdx === i) renderView(i);
+        await generateFor(i);
+      }
 
-    // ── Save progress to localStorage after EVERY prospect ────
-    // So even a page refresh or crash doesn't lose completed work
-    saveProgressToStorage();
+      finishStepsDone();
+      updateBatchBar(i+1, false);
 
-    // ── Update UI — always go to first DONE prospect if user is on a pending one
-    if(currentIdx === i || allResults[currentIdx]._status !== 'done'){
-      // Find the first done result to show
+      // Save to localStorage immediately after EVERY prospect
+      saveProgressToStorage();
+
+      // Update UI
       const firstDone = allResults.findIndex(r => r._status === 'done');
       if(firstDone >= 0 && allResults[currentIdx]._status !== 'done'){
         currentIdx = firstDone;
       }
       renderView(currentIdx);
-    } else if(currentIdx === i){
-      renderView(i);
+      refreshNavDot(i, allResults[i]._status === 'done' ? 'done' : 'failed');
     }
 
-    refreshNavDot(i, allResults[i]._status === 'done' ? 'done' : 'failed');
+    chunkStart = chunkEnd;
+
+    // If more chunks remain — pause 10s between chunks and show status
+    if(chunkStart < prospects.length && !_generationStopped){
+      const done    = allResults.filter(r => r._status === 'done').length;
+      const remaining = prospects.length - chunkStart;
+      updateBatchStatusMsg(`✓ ${done} done · Pausing 10s before next ${Math.min(CHUNK_SIZE, remaining)} prospects...`);
+      await sleep(10000);
+    }
   }
 
   stopWorkingOverlay();
 
-  // Always show the first successfully generated prospect on completion
+  // Navigate to first successfully done result
   const firstDone = allResults.findIndex(r => r._status === 'done');
-  if(firstDone >= 0) renderView(firstDone);
-  else renderView(currentIdx);
+  renderView(firstDone >= 0 ? firstDone : 0);
 
-  const done      = allResults.filter(r => r._status === 'done').length;
-  const failed    = allResults.filter(r => r._status === 'failed').length;
-  const cancelled = allResults.filter(r => r._status === 'cancelled').length;
+  // Update nav dots for all
+  allResults.forEach((_,i) => refreshNavDot(i, allResults[i]._status === 'done' ? 'done' : 'failed'));
+
+  const done   = allResults.filter(r => r._status === 'done').length;
+  const failed = allResults.filter(r => r._status === 'failed').length;
 
   if(_generationStopped){
-    showToast(`⏹ Stopped — ${done} ready, ${cancelled} skipped. Use ↺ Retry on failed ones.`);
+    showToast(`⏹ Stopped · ${done} ready · ${failed} failed`);
   } else if(failed > 0){
-    showToast(`✓ Done — ${done} sequences ready! ${failed} failed — click ↺ Retry on each.`);
+    showToast(`✓ ${done} sequences ready! ${failed} failed · use ↺ Retry`);
+    // Show retry-all button for failed ones
+    showRetryAllBtn(failed);
   } else {
-    showToast(`✅ All ${done} sequence${done!==1?'s':''} generated successfully!`);
+    showToast(`✅ All ${done} sequences generated!`);
+    localStorage.removeItem('sc_progress');
   }
-
-  // Clear saved progress now that batch is complete
-  localStorage.removeItem('sc_progress');
 }
 
-// ── Save/restore progress ─────────────────────────────────────
-function saveProgressToStorage(){
-  try{
-    // Only save essential data — emails + status (not full research intel to save space)
-    const saved = allResults.map(r => ({
-      prospect:       r.prospect,
-      prospect_name:  r.prospect_name,
-      _status:        r._status,
-      research_intel: r.research_intel,
-      emails:         r.emails,
-    }));
-    localStorage.setItem('sc_progress', JSON.stringify({
-      saved,
-      theme:      selectedTheme,
-      length:     selectedLength,
-      savedAt:    Date.now(),
-    }));
-  } catch(e){ console.warn('Progress save failed (storage full?):', e); }
+// ── Retry all failed prospects at once ───────────────────────
+async function retryAllFailed(){
+  const failedIdxs = allResults.map((r,i) => r._status === 'failed' ? i : -1).filter(i => i >= 0);
+  if(failedIdxs.length === 0) return;
+
+  document.getElementById('retryAllBtn')?.remove();
+
+  for(const i of failedIdxs){
+    if(_generationStopped) break;
+    startWorkingOverlay(i);
+    updateBatchBar(i, true);
+    allResults[i]._status = 'pending';
+    renderView(i);
+    await sleep(3000);
+    await generateFor(i);
+    finishStepsDone();
+    updateBatchBar(i+1, false);
+    saveProgressToStorage();
+    renderView(currentIdx);
+    refreshNavDot(i, allResults[i]._status === 'done' ? 'done' : 'failed');
+  }
+  stopWorkingOverlay();
+  const done = allResults.filter(r => r._status === 'done').length;
+  showToast(`✓ Done · ${done} total sequences ready`);
+  if(allResults.every(r => r._status === 'done')) localStorage.removeItem('sc_progress');
 }
 
-function loadProgressFromStorage(){
-  try{
-    const raw = localStorage.getItem('sc_progress');
-    if(!raw) return false;
-    const data = JSON.parse(raw);
-    // Only restore if saved within last 4 hours
-    if(Date.now() - data.savedAt > 4 * 60 * 60 * 1000){ localStorage.removeItem('sc_progress'); return false; }
-    allResults    = data.saved;
-    selectedTheme = data.theme;
-    selectedLength= data.length;
-    prospects     = allResults.map(r => r.prospect);
-    return true;
-  } catch(e){ return false; }
+function showRetryAllBtn(failedCount){
+  document.getElementById('retryAllBtn')?.remove();
+  const btn = document.createElement('button');
+  btn.id = 'retryAllBtn';
+  btn.textContent = `↺ Retry All ${failedCount} Failed`;
+  btn.style.cssText = `position:fixed;bottom:28px;right:24px;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#fff;padding:12px 22px;border-radius:50px;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;box-shadow:0 8px 32px rgba(124,92,252,.4);z-index:500;`;
+  btn.onclick = retryAllFailed;
+  document.body.appendChild(btn);
+  // Auto-hide after 30 seconds
+  setTimeout(() => btn.remove(), 30000);
 }
 
-function updateBatchStatusMsg(msg){
-  const el = document.getElementById('woTicker');
-  if(el) el.textContent = msg;
-}
 
 function stopGeneration(){
   _generationStopped = true;
@@ -1612,17 +1623,17 @@ function toggleIntel(){document.getElementById('intelPanel').classList.toggle('o
 
 async function regenerateCurrent(){
   const idx = currentIdx;
-  // Reset this prospect to pending before retry
   allResults[idx]._status = 'pending';
-  renderView(idx); // show skeleton immediately
-
+  renderView(idx);
   startWorkingOverlay(idx);
   updateBatchBar(idx, true);
   await generateFor(idx);
   finishStepsDone();
   updateBatchBar(idx+1, false);
   stopWorkingOverlay();
-  renderView(idx); // render real result
+  saveProgressToStorage();
+  renderView(idx);
+  refreshNavDot(idx, allResults[idx]._status === 'done' ? 'done' : 'failed');
 }
 
 // ═══════════════════════ COPY ════════════════════════
