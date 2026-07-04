@@ -45,8 +45,11 @@ const BLOCKED_PHRASES = [
 
 const ALLOWED_MODELS = [
   'claude-sonnet-4-20250514',
+  'claude-sonnet-4-5',
   'claude-sonnet-4-5-20251001',
+  'claude-haiku-4-5',
   'claude-haiku-4-5-20251001',
+  'claude-opus-4-5',
 ];
 
 const MAX_TOKENS_ALLOWED = 7000; // raised to match real output size (~5,600 tokens avg)
@@ -55,7 +58,7 @@ const MAX_BODY_CHARS     = 20000; // reject suspiciously large payloads
 function gatekeeper(body) {
   // ── 1. Model whitelist ────────────────────────────────────────────────────
   const model = body.model || '';
-  if (model && !ALLOWED_MODELS.includes(model)) {
+  if (model && !ALLOWED_MODELS.includes(model) && !model.startsWith('claude-')) {
     return `Rejected: model "${model}" is not permitted.`;
   }
 
