@@ -1050,6 +1050,39 @@ async function startGeneration(){
 // ── Generation stop flag ─────────────────────────────────────
 let _generationStopped = false;
 
+// ── Progress persistence ─────────────────────────────────────
+function saveProgressToStorage(){
+  try{
+    const saved = allResults.map(r=>({
+      prospect:r.prospect, prospect_name:r.prospect_name,
+      _status:r._status, _error:r._error||'',
+      research_intel:r.research_intel, emails:r.emails,
+    }));
+    localStorage.setItem('sc_progress', JSON.stringify({
+      saved, theme:selectedTheme, length:selectedLength, savedAt:Date.now()
+    }));
+  } catch(e){ console.warn('Progress save failed:',e); }
+}
+
+function loadProgressFromStorage(){
+  try{
+    const raw = localStorage.getItem('sc_progress');
+    if(!raw) return false;
+    const data = JSON.parse(raw);
+    if(Date.now() - data.savedAt > 4*60*60*1000){ localStorage.removeItem('sc_progress'); return false; }
+    allResults    = data.saved;
+    selectedTheme = data.theme;
+    selectedLength= data.length;
+    prospects     = allResults.map(r=>r.prospect);
+    return true;
+  } catch(e){ return false; }
+}
+
+function updateBatchStatusMsg(msg){
+  const el = document.getElementById('woTicker');
+  if(el) el.textContent = msg;
+}
+
 async function runGeneration(){
   _generationStopped = false;
   allResults = [];
