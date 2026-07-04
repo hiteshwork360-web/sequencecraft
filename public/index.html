@@ -325,6 +325,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;align-items:cen
 <body>
 
 
+
 <nav>
   <div class="nav-logo">Sequence<span>Craft</span></div>
   <div class="nav-counter" id="navCounter" style="display:none;">
@@ -1607,312 +1608,94 @@ function getDomain(url){try{return new URL(url).hostname.replace('www.','');}cat
 // Seed one manual row
 addManualRow();
 
-// ═══════════════════════ SIGNUP GATE ═════════════════════════
+// ═══════════════════════ SIGNUP GATE (TOTP) ════════════════════
 let pendingGeneration = false;
 let signupData        = {};
-let sgSending         = false;
-let sgVerifying       = false;
+let sgBusy            = false;
 
 function openSignupModal(){
-  document.getElementById('signupStep1').style.display = 'block';
-  document.getElementById('signupStep2').style.display = 'none';
-  document.getElementById('signupStep3').style.display = 'none';
-  document.getElementById('sgStep1Error').style.display = 'none';
-  document.getElementById('sgStep2Error').style.display = 'none';
+  ['signupStep1','signupStep2','signupStep3','signupStep4'].forEach((id,i)=>{
+    const el = document.getElementById(id);
+    if(el) el.style.display = i===0 ? 'block' : 'none';
+  });
+  ['sgStep1Error','sgStep2Error','sgStep3Error'].forEach(id=>{
+    const el = document.getElementById(id); if(el) el.style.display='none';
+  });
   document.getElementById('signupModal').classList.add('open');
 }
-
-function closeSignupModal(){
-  document.getElementById('signupModal').classList.remove('open');
-}
+function closeSignupModal(){ document.getElementById('signupModal').classList.remove('open'); }
+function showSignupStep(n){ for(let i=1;i<=4;i++){ const el=document.getElementById('signupStep'+i); if(el) el.style.display=i===n?'block':'none'; } }
+function showSignupError(step,msg){ const el=document.getElementById('sgStep'+step+'Error'); if(!el) return; el.style.display='block'; el.textContent=msg; }
 
 async function submitSignupStep1(){
-  if(sgSending) return;
-  const name  = document.getElementById('sgName').value.trim();
-  const email = document.getElementById('sgEmail').value.trim();
-  const phone = document.getElementById('sgPhone').value.trim();
-  const err   = document.getElementById('sgStep1Error');
-  const btn   = document.getElementById('sgStep1Btn');
-  if(!name || !email || !phone || !email.includes('@')){
-    err.style.display = 'block';
-    err.textContent   = 'Please fill in all fields with a valid email.';
-    return;
-  }
-  err.style.display = 'none';
-  signupData = { name, email, phone };
-  sgSending        = true;
-  btn.textContent  = 'Sending code...';
-  btn.disabled     = true;
+  if(sgBusy) return;
+  const name=document.getElementById('sgName').value.trim();
+  const email=document.getElementById('sgEmail').value.trim();
+  const phone=document.getElementById('sgPhone').value.trim();
+  const btn=document.getElementById('sgStep1Btn');
+  document.getElementById('sgStep1Error').style.display='none';
+  if(!name||!email||!phone||!email.includes('@')){ showSignupError(1,'Please fill in all fields with a valid email.'); return; }
+  signupData={name,email,phone}; sgBusy=true; btn.textContent='Setting up...'; btn.disabled=true;
   try{
-    const res  = await fetch('/api/send-otp', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ phone })
-    });
-    const data = await res.json();
-    if(!res.ok || !data.ok){
-      err.style.display = 'block';
-      err.textContent   = data.error || 'Failed to send SMS. Make sure phone includes country code e.g. +91 98765 43210';
-      btn.textContent   = 'Send Verification Code →';
-      btn.disabled      = false;
-      sgSending         = false;
-      return;
-    }
-    document.getElementById('sgPhoneDisplay').textContent = phone;
-    document.getElementById('signupStep1').style.display  = 'none';
-    document.getElementById('signupStep2').style.display  = 'block';
-    setTimeout(()=>{ const b=document.querySelectorAll('.otp-box'); if(b[0]) b[0].focus(); },100);
-  } catch(e){
-    err.style.display = 'block';
-    err.textContent   = 'Network error. Please try again.';
-  }
-  sgSending       = false;
-  btn.textContent = 'Send Verification Code →';
-  btn.disabled    = false;
+    const res=await fetch('/api/totp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'setup',email})});
+    const data=await res.json();
+    if(!res.ok||!data.ok){ showSignupError(1,data.error||'Setup failed. Please try again.'); return; }
+    if(data.already_verified){ showSignupStep(3); setTimeout(()=>{ document.querySelectorAll('.otp-box')[0]?.focus(); },100); return; }
+    document.getElementById('qrCodeImg').src=data.qr_url;
+    document.getElementById('manualSecret').textContent=data.secret;
+    showSignupStep(2);
+  } catch(e){ showSignupError(1,'Network error. Please try again.'); }
+  finally{ sgBusy=false; btn.textContent='Continue →'; btn.disabled=false; }
 }
 
-function otpNext(el, idx){
-  el.value = el.value.replace(/[^0-9]/g,'');
-  el.classList.toggle('filled', el.value.length > 0);
-  if(el.value.length === 1){
-    const boxes = document.querySelectorAll('.otp-box');
-    if(idx < 5) boxes[idx+1].focus();
-    else submitSignupStep2();
-  }
+function goToTotpVerify(){
+  document.querySelectorAll('.otp-box').forEach(b=>{b.value='';b.classList.remove('filled');});
+  const err=document.getElementById('sgStep3Error'); if(err) err.style.display='none';
+  showSignupStep(3);
+  setTimeout(()=>{ document.querySelectorAll('.otp-box')[0]?.focus(); },100);
+}
+function goBackToQR(){ showSignupStep(2); }
+
+function otpNext(el,idx){
+  el.value=el.value.replace(/[^0-9]/g,'');
+  el.classList.toggle('filled',el.value.length>0);
+  if(el.value.length===1){ const boxes=document.querySelectorAll('.otp-box'); if(idx<5) boxes[idx+1].focus(); else submitTotpVerify(); }
 }
 
-async function resendOtp(){
-  const err = document.getElementById('sgStep2Error');
-  document.querySelectorAll('.otp-box').forEach(b=>{ b.value=''; b.classList.remove('filled'); });
-  err.style.cssText = 'display:block;background:rgba(124,92,252,.08);border-color:rgba(124,92,252,.3);color:var(--accent)';
-  err.textContent   = 'Sending new code...';
+async function submitTotpVerify(){
+  if(sgBusy) return;
+  const boxes=document.querySelectorAll('.otp-box');
+  const token=Array.from(boxes).map(b=>b.value).join('');
+  const btn=document.getElementById('sgStep3Btn');
+  const err3=document.getElementById('sgStep3Error'); if(err3) err3.style.display='none';
+  if(token.length<6){ showSignupError(3,'Please enter all 6 digits from your authenticator app.'); return; }
+  sgBusy=true; btn.textContent='Verifying...'; btn.disabled=true;
   try{
-    const res  = await fetch('/api/send-otp',{
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ phone: signupData.phone })
-    });
-    const data = await res.json();
-    if(res.ok && data.ok){
-      err.style.cssText = 'display:block;background:rgba(76,252,140,.08);border-color:rgba(76,252,140,.3);color:var(--green)';
-      err.textContent   = 'New code sent to your phone!';
-    } else {
-      err.style.cssText = '';
-      err.style.display = 'block';
-      err.textContent   = data.error || 'Failed to resend. Please try again.';
-    }
-  } catch(e){
-    err.style.cssText = ''; err.style.display = 'block';
-    err.textContent   = 'Network error. Please try again.';
-  }
-  setTimeout(()=>{ err.style.cssText='display:none'; }, 3000);
-  document.querySelectorAll('.otp-box')[0].focus();
-}
-
-async function submitSignupStep2(){
-  if(sgVerifying) return;
-  const boxes   = document.querySelectorAll('.otp-box');
-  const entered = Array.from(boxes).map(b=>b.value).join('');
-  const err     = document.getElementById('sgStep2Error');
-  const btn     = document.getElementById('sgStep2Btn');
-  if(entered.length < 6){
-    err.style.cssText = ''; err.style.display = 'block';
-    err.textContent   = 'Please enter all 6 digits.';
-    return;
-  }
-  sgVerifying     = true;
-  btn.textContent = 'Verifying...';
-  btn.disabled    = true;
-  try{
-    const res  = await fetch('/api/verify-otp',{
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ phone: signupData.phone, otp: entered })
-    });
-    const data = await res.json();
-    if(!res.ok || !data.ok){
-      err.style.cssText = ''; err.style.display = 'block';
-      err.textContent   = data.error || 'Incorrect code. Please try again.';
-      boxes.forEach(b=>{ b.value=''; b.classList.remove('filled'); });
-      boxes[0].focus();
-      btn.textContent = 'Verify & Unlock →';
-      btn.disabled    = false;
-      sgVerifying     = false;
-      return;
+    const res=await fetch('/api/totp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify',email:signupData.email,token})});
+    const data=await res.json();
+    if(!res.ok||!data.ok){
+      showSignupError(3,data.error||'Incorrect code. Codes refresh every 30 seconds — try again.');
+      boxes.forEach(b=>{b.value='';b.classList.remove('filled');}); boxes[0].focus(); return;
     }
     localStorage.setItem('sc_verified','1');
-    localStorage.setItem('sc_user', JSON.stringify(signupData));
-    document.getElementById('signupStep2').style.display = 'none';
-    document.getElementById('signupStep3').style.display = 'block';
+    localStorage.setItem('sc_user',JSON.stringify(signupData));
+    showSignupStep(4);
     saveLeadToSheets(signupData);
-    // Increment user count in Supabase
-    fetch('/api/stats',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({new_user:1})})
-      .then(r=>r.json()).then(d=>{ if(d.users) animateHeroNum('heroUserNum',d.users); }).catch(()=>{});
-    refreshDeleteBtn();
-    setTimeout(async()=>{
-      closeSignupModal();
-      if(pendingGeneration){ pendingGeneration=false; await runGeneration(); }
-    }, 1800);
-  } catch(e){
-    err.style.cssText = ''; err.style.display = 'block';
-    err.textContent   = 'Network error. Please try again.';
-    btn.textContent   = 'Verify & Unlock →';
-    btn.disabled      = false;
-  }
-  sgVerifying = false;
+    setTimeout(async()=>{ closeSignupModal(); if(pendingGeneration){pendingGeneration=false;await runGeneration();} },1800);
+  } catch(e){ showSignupError(3,'Network error. Please try again.'); }
+  finally{ sgBusy=false; btn.textContent='Verify & Unlock →'; btn.disabled=false; }
 }
 
 async function saveLeadToSheets(data){
   try{
-    // Save lead to Google Sheets
-    await fetch('/api/save-lead',{
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ name:data.name, email:data.email, phone:data.phone,
-        timestamp:new Date().toISOString(), source:'SequenceCraft' })
-    });
-    // Increment user count in Supabase stats
-    const res = await fetch('/api/stats',{
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ count:0, new_user:true })
-    });
-    const statsData = await res.json();
-    const users = statsData.total_users || statsData.users || 0;
-    if(users > 0) animateHeroNum('heroUserNum', users);
-    // Show delete button now that user is verified
+    await fetch('/api/save-lead',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:data.name,email:data.email,phone:data.phone,timestamp:new Date().toISOString(),source:'SequenceCraft'})});
+    const res=await fetch('/api/stats',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({count:0,new_user:true})});
+    const sd=await res.json();
+    const u=sd.total_users||0; if(u>0) animateHeroNum('heroUserNum',u);
     refreshDeleteBtn();
   } catch(e){ console.warn('Lead save failed silently:',e); }
 }
-// ═════════════════════════════════════════════════════════════
-
-
-
-
-// ═══════════════════════ HERO STATS ══════════════════════════
-async function fetchAndShowCounter(){
-  try{
-    const res  = await fetch('/api/stats');
-    const data = await res.json();
-    const seqs  = data.total_sequences || data.sequences || data.total || 0;
-    const users = data.total_users     || data.users     || 0;
-    updateHeroStats(seqs, users);
-    if(seqs > 0) showCounter(seqs);
-  } catch(e){ /* silent */ }
-}
-
-function updateHeroStats(sequences, users){
-  const heroStats = document.getElementById('heroStats');
-  if(!heroStats) return;
-  // Only show if we have real numbers
-  if(sequences < 1 && users < 1) return;
-  heroStats.style.display = 'flex';
-  animateHeroNum('heroSeqNum',  sequences);
-  animateHeroNum('heroUserNum', users);
-}
-
-function animateHeroNum(elId, target){
-  const el = document.getElementById(elId);
-  if(!el) return;
-  const start    = parseInt(el.textContent.replace(/,/g,'')) || 0;
-  if(start === target) return;
-  const duration = 1600;
-  const steps    = 50;
-  let   step     = 0;
-  const timer = setInterval(() => {
-    step++;
-    const val = step < steps
-      ? Math.round(start + (target - start) * (step / steps))
-      : target;
-    el.textContent = val.toLocaleString('en-US');
-    if(step >= steps) clearInterval(timer);
-  }, duration / steps);
-}
-
-// Override existing trackSequenceGenerated to also update hero stats
-const _origTrack = typeof trackSequenceGenerated !== 'undefined' ? trackSequenceGenerated : null;
-async function trackSequenceGenerated(count){
-  _localCount += count;
-  try{
-    const res  = await fetch('/api/stats', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ count })
-    });
-    const data = await res.json();
-    const seqs2  = data.total_sequences || data.sequences || data.total || 0;
-    const users2 = data.total_users     || data.users     || 0;
-    if(seqs2 > 0){ animateCounter(seqs2); animateHeroNum('heroSeqNum', seqs2); }
-    if(users2 > 0) animateHeroNum('heroUserNum', users2);
-  } catch(e){ console.warn('Stats tracking failed:', e); }
-}
-
-// ═══════════════════════ DELETE ACCOUNT ══════════════════════
-function openDeleteModal(){
-  document.getElementById('deleteStep1').style.display = 'block';
-  document.getElementById('deleteStep2').style.display = 'none';
-  document.getElementById('deleteError').style.display = 'none';
-  document.getElementById('deleteReason').value = '';
-  document.getElementById('deleteFeedback').value = '';
-  document.getElementById('deleteModal').classList.add('open');
-}
-
-function closeDeleteModal(){
-  document.getElementById('deleteModal').classList.remove('open');
-}
-
-async function submitDeleteAccount(){
-  const reason   = document.getElementById('deleteReason').value;
-  const feedback = document.getElementById('deleteFeedback').value.trim();
-  const err      = document.getElementById('deleteError');
-  const btn      = document.getElementById('deleteSubmitBtn');
-
-  if(!reason){
-    err.style.display = 'block';
-    err.textContent   = 'Please select a reason before continuing.';
-    return;
-  }
-  err.style.display = 'none';
-  btn.textContent   = 'Deleting...';
-  btn.disabled      = true;
-
-  // Get user data from localStorage
-  const userData = JSON.parse(localStorage.getItem('sc_user') || '{}');
-
-  try{
-    await fetch('/api/delete-account', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name:     userData.name  || '',
-        email:    userData.email || '',
-        phone:    userData.phone || '',
-        reason,
-        feedback,
-      })
-    });
-  } catch(e){ /* still proceed with local deletion */ }
-
-  // Clear all local data
-  localStorage.removeItem('sc_verified');
-  localStorage.removeItem('sc_user');
-
-  // Show success
-  document.getElementById('deleteStep1').style.display = 'none';
-  document.getElementById('deleteStep2').style.display = 'block';
-
-  // Hide delete button from nav
-  const delBtn = document.getElementById('deleteAccBtn');
-  if(delBtn) delBtn.style.display = 'none';
-
-  setTimeout(() => {
-    closeDeleteModal();
-    resetTool();
-  }, 2500);
-}
-
-// Show delete button only when user is verified
-function refreshDeleteBtn(){
-  const btn = document.getElementById('deleteAccBtn');
-  if(!btn) return;
-  btn.style.display = localStorage.getItem('sc_verified') ? 'block' : 'none';
-}
-
 // ═════════════════════════════════════════════════════════════
 
 // On page load: show stats + show delete btn if verified
