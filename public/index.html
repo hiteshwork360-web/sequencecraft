@@ -553,6 +553,15 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;align-items:cen
       </div>
     </div>
 
+    <!-- Restore progress banner -->
+    <div id="restoreBanner" style="display:none;background:rgba(76,252,140,.08);border:1px solid rgba(76,252,140,.25);border-radius:var(--radius);padding:14px 20px;margin-bottom:20px;display:none;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+      <div style="font-size:13px;color:var(--green);font-weight:500;">✓ Previous session found — <span id="restoreCount"></span> sequences were generated</div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="restoreProgress()" style="background:var(--green);border:none;color:var(--bg);padding:8px 18px;border-radius:var(--radius-sm);cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;">Restore Results</button>
+        <button onclick="dismissRestore()" style="background:none;border:1px solid rgba(76,252,140,.3);color:var(--green);padding:8px 14px;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;">Dismiss</button>
+      </div>
+    </div>
+
     <div class="prospect-nav" id="prospectNav">
       <div class="pnav-info">
         <div class="pnav-persona-name" id="pnavName">—</div>
@@ -1045,26 +1054,21 @@ async function runGeneration(){
   allResults = [];
   currentIdx = 0;
 
-  // Pre-fill allResults with pending placeholders so nav renders immediately
+  // Pre-fill allResults with pending placeholders
   prospects.forEach((p,i) => {
-    allResults.push({ prospect:p, prospect_name: nameFromEmail(p.email),
-      _status: 'pending', research_intel:{sources_used:[],signals:[],personalisation_hooks:[]}, emails:[] });
+    allResults.push({ prospect:p, prospect_name:nameFromEmail(p.email),
+      _status:'pending', research_intel:{sources_used:[],signals:[],personalisation_hooks:[]}, emails:[] });
   });
 
-  // Go to results panel and render the first (pending) view right away
   showPanel(4);
   initBatchBar();
   renderView(0);
 
-  // Generate one by one — with auto-retry + stop support
   for(let i=0; i<prospects.length; i++){
 
-    // ── Check stop flag before each prospect ──────────────────
     if(_generationStopped){
-      // Mark remaining as cancelled
       for(let j=i; j<prospects.length; j++){
-        allResults[j]._status = 'failed';
-        allResults[j].prospect_name = nameFromEmail(prospects[j].email);
+        allResults[j]._status = 'cancelled';
       }
       break;
     }
@@ -1072,15 +1076,20 @@ async function runGeneration(){
     startWorkingOverlay(i);
     updateBatchBar(i, true);
 
+    // ── Paced delay between calls to avoid rate limits ────────
+    // After every 5 prospects, pause 4 seconds to let rate limit window breathe
+    if(i > 0 && i % 5 === 0 && !_generationStopped){
+      updateBatchStatusMsg(`Pausing briefly to stay within API limits... (${i}/${prospects.length} done)`);
+      await sleep(4000);
+    }
+
     // ── First attempt ─────────────────────────────────────────
     await generateFor(i);
 
-    // ── Auto-retry once if failed ─────────────────────────────
+    // ── Auto-retry once if failed (with longer pause) ─────────
     if(allResults[i]._status === 'failed' && !_generationStopped){
-      console.log(`[SequenceCraft] Auto-retrying prospect ${i+1}...`);
-      // Brief pause before retry — helps with rate limit recovery
-      await sleep(3000);
-      // Reset to pending before retry
+      console.log(`[SequenceCraft] Auto-retrying prospect ${i+1} after 6s...`);
+      await sleep(6000);
       allResults[i]._status = 'pending';
       if(currentIdx === i) renderView(i);
       await generateFor(i);
@@ -1089,24 +1098,86 @@ async function runGeneration(){
     finishStepsDone();
     updateBatchBar(i+1, false);
 
-    // Refresh current view if user is watching this prospect
-    if(currentIdx === i) renderView(i);
+    // ── Save progress to localStorage after EVERY prospect ────
+    // So even a page refresh or crash doesn't lose completed work
+    saveProgressToStorage();
+
+    // ── Update UI — always go to first DONE prospect if user is on a pending one
+    if(currentIdx === i || allResults[currentIdx]._status !== 'done'){
+      // Find the first done result to show
+      const firstDone = allResults.findIndex(r => r._status === 'done');
+      if(firstDone >= 0 && allResults[currentIdx]._status !== 'done'){
+        currentIdx = firstDone;
+      }
+      renderView(currentIdx);
+    } else if(currentIdx === i){
+      renderView(i);
+    }
+
     refreshNavDot(i, allResults[i]._status === 'done' ? 'done' : 'failed');
   }
 
   stopWorkingOverlay();
-  renderView(currentIdx);
 
-  // Show completion summary
-  const done   = allResults.filter(r => r._status === 'done').length;
-  const failed = allResults.filter(r => r._status === 'failed').length;
+  // Always show the first successfully generated prospect on completion
+  const firstDone = allResults.findIndex(r => r._status === 'done');
+  if(firstDone >= 0) renderView(firstDone);
+  else renderView(currentIdx);
+
+  const done      = allResults.filter(r => r._status === 'done').length;
+  const failed    = allResults.filter(r => r._status === 'failed').length;
+  const cancelled = allResults.filter(r => r._status === 'cancelled').length;
+
   if(_generationStopped){
-    showToast(`⏹ Stopped — ${done} sequence${done!==1?'s':''} generated, ${failed} skipped`);
+    showToast(`⏹ Stopped — ${done} ready, ${cancelled} skipped. Use ↺ Retry on failed ones.`);
   } else if(failed > 0){
-    showToast(`✓ Done — ${done} generated, ${failed} failed (click ↺ Retry on each)`);
+    showToast(`✓ Done — ${done} sequences ready! ${failed} failed — click ↺ Retry on each.`);
   } else {
     showToast(`✅ All ${done} sequence${done!==1?'s':''} generated successfully!`);
   }
+
+  // Clear saved progress now that batch is complete
+  localStorage.removeItem('sc_progress');
+}
+
+// ── Save/restore progress ─────────────────────────────────────
+function saveProgressToStorage(){
+  try{
+    // Only save essential data — emails + status (not full research intel to save space)
+    const saved = allResults.map(r => ({
+      prospect:       r.prospect,
+      prospect_name:  r.prospect_name,
+      _status:        r._status,
+      research_intel: r.research_intel,
+      emails:         r.emails,
+    }));
+    localStorage.setItem('sc_progress', JSON.stringify({
+      saved,
+      theme:      selectedTheme,
+      length:     selectedLength,
+      savedAt:    Date.now(),
+    }));
+  } catch(e){ console.warn('Progress save failed (storage full?):', e); }
+}
+
+function loadProgressFromStorage(){
+  try{
+    const raw = localStorage.getItem('sc_progress');
+    if(!raw) return false;
+    const data = JSON.parse(raw);
+    // Only restore if saved within last 4 hours
+    if(Date.now() - data.savedAt > 4 * 60 * 60 * 1000){ localStorage.removeItem('sc_progress'); return false; }
+    allResults    = data.saved;
+    selectedTheme = data.theme;
+    selectedLength= data.length;
+    prospects     = allResults.map(r => r.prospect);
+    return true;
+  } catch(e){ return false; }
+}
+
+function updateBatchStatusMsg(msg){
+  const el = document.getElementById('woTicker');
+  if(el) el.textContent = msg;
 }
 
 function stopGeneration(){
@@ -1698,11 +1769,176 @@ async function saveLeadToSheets(data){
 }
 // ═════════════════════════════════════════════════════════════
 
+// ═══════════════════════ STATS COUNTER ════════════════════════
+let _localCount = 0;
+
+async function trackSequenceGenerated(count){
+  _localCount += count;
+  try{
+    const res  = await fetch('/api/stats',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({count})});
+    const data = await res.json();
+    const seqs = data.total_sequences || data.total || 0;
+    const users= data.total_users || 0;
+    if(seqs > 0){ animateCounter(seqs); animateHeroNum('heroSeqNum', seqs); }
+    if(users > 0) animateHeroNum('heroUserNum', users);
+  } catch(e){ console.warn('Stats tracking failed:',e); }
+}
+
+async function fetchAndShowCounter(){
+  try{
+    const res  = await fetch('/api/stats');
+    const data = await res.json();
+    const seqs  = data.total_sequences || data.total || 0;
+    const users = data.total_users || 0;
+    updateHeroStats(seqs, users);
+    if(seqs > 0) showCounter(seqs);
+  } catch(e){}
+}
+
+function updateHeroStats(sequences, users){
+  const el = document.getElementById('heroStats');
+  if(!el) return;
+  if(sequences < 1 && users < 1) return;
+  el.style.display = 'flex';
+  animateHeroNum('heroSeqNum',  sequences);
+  animateHeroNum('heroUserNum', users);
+}
+
+function animateHeroNum(elId, target){
+  const el = document.getElementById(elId);
+  if(!el) return;
+  const start = parseInt(el.textContent.replace(/,/g,'')) || 0;
+  if(start === target) return;
+  const steps = 50; let step = 0;
+  const timer = setInterval(()=>{
+    step++;
+    el.textContent = formatCount(step < steps ? Math.round(start + (target-start)*(step/steps)) : target);
+    if(step >= steps) clearInterval(timer);
+  }, 1600/steps);
+}
+
+function showCounter(total){
+  const el = document.getElementById('navCounter');
+  if(!el || total < 1) return;
+  el.style.display = 'flex';
+  document.getElementById('navCountNum').textContent = formatCount(total);
+}
+
+function animateCounter(target){
+  const el   = document.getElementById('navCountNum');
+  const wrap = document.getElementById('navCounter');
+  if(!el || !wrap) return;
+  wrap.style.display = 'flex';
+  const start = parseInt(el.textContent.replace(/,/g,'')) || 0;
+  const steps = 40; let step = 0;
+  const timer = setInterval(()=>{
+    step++;
+    el.textContent = formatCount(step < steps ? Math.round(start + (target-start)*(step/steps)) : target);
+    if(step >= steps) clearInterval(timer);
+  }, 1200/steps);
+}
+
+function formatCount(n){ return Number(n).toLocaleString('en-US'); }
+
+// ═══════════════════════ DELETE ACCOUNT ════════════════════════
+function refreshDeleteBtn(){
+  const btn = document.getElementById('deleteAccBtn');
+  if(btn) btn.style.display = localStorage.getItem('sc_verified') ? 'block' : 'none';
+}
+
+function openDeleteModal(){
+  const s1 = document.getElementById('deleteStep1');
+  const s2 = document.getElementById('deleteStep2');
+  const err = document.getElementById('deleteError');
+  if(s1) s1.style.display = 'block';
+  if(s2) s2.style.display = 'none';
+  if(err) err.style.display = 'none';
+  const reason = document.getElementById('deleteReason');
+  const fb     = document.getElementById('deleteFeedback');
+  if(reason) reason.value = '';
+  if(fb) fb.value = '';
+  document.getElementById('deleteModal').classList.add('open');
+}
+
+function closeDeleteModal(){
+  document.getElementById('deleteModal').classList.remove('open');
+}
+
+async function submitDeleteAccount(){
+  const reason   = document.getElementById('deleteReason')?.value;
+  const feedback = document.getElementById('deleteFeedback')?.value.trim();
+  const err      = document.getElementById('deleteError');
+  const btn      = document.getElementById('deleteSubmitBtn');
+  if(!reason){ if(err){err.style.display='block';err.textContent='Please select a reason.';} return; }
+  if(err) err.style.display = 'none';
+  if(btn){ btn.textContent='Deleting...'; btn.disabled=true; }
+  const userData = JSON.parse(localStorage.getItem('sc_user')||'{}');
+  try{
+    await fetch('/api/delete-account',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:userData.name||'',email:userData.email||'',phone:userData.phone||'',reason,feedback})});
+  } catch(e){}
+  localStorage.removeItem('sc_verified');
+  localStorage.removeItem('sc_user');
+  localStorage.removeItem('sc_progress');
+  const s1=document.getElementById('deleteStep1'); if(s1) s1.style.display='none';
+  const s2=document.getElementById('deleteStep2'); if(s2) s2.style.display='block';
+  refreshDeleteBtn();
+  setTimeout(()=>{ closeDeleteModal(); resetTool(); }, 2500);
+}
+// ═══════════════════════════════════════════════════════════════
+
 // On page load: show stats + show delete btn if verified
 fetchAndShowCounter();
 refreshDeleteBtn();
 // Real-time polling every 30 seconds
 setInterval(fetchAndShowCounter, 30000);
+
+// ── Check for saved progress from previous session ────────────
+(function checkSavedProgress(){
+  try{
+    const raw = localStorage.getItem('sc_progress');
+    if(!raw) return;
+    const data = JSON.parse(raw);
+    if(Date.now() - data.savedAt > 4 * 60 * 60 * 1000){ localStorage.removeItem('sc_progress'); return; }
+    const doneCount = data.saved.filter(r => r._status === 'done').length;
+    if(doneCount === 0) return;
+    // Show restore banner on the hero/step panel
+    const banner = document.getElementById('restoreBanner');
+    const count  = document.getElementById('restoreCount');
+    if(banner && count){
+      count.textContent = doneCount + ' prospect' + (doneCount !== 1 ? 's' : '');
+      banner.style.display = 'flex';
+    }
+  } catch(e){}
+})();
+
+function restoreProgress(){
+  const raw = localStorage.getItem('sc_progress');
+  if(!raw) return;
+  try{
+    const data    = JSON.parse(raw);
+    allResults    = data.saved;
+    selectedTheme = data.theme;
+    selectedLength= data.length;
+    prospects     = allResults.map(r => r.prospect);
+    showPanel(4);
+    initBatchBar();
+    updateBatchBar(allResults.length, false);
+    // Show first done result
+    const firstDone = allResults.findIndex(r => r._status === 'done');
+    renderView(firstDone >= 0 ? firstDone : 0);
+    // Refresh all nav dots
+    allResults.forEach((_,i) => refreshNavDot(i, allResults[i]._status === 'done' ? 'done' : 'failed'));
+    showToast(`✓ Restored ${allResults.filter(r=>r._status==='done').length} sequences from your last session`);
+  } catch(e){
+    showToast('Could not restore session. Please generate again.');
+  }
+}
+
+function dismissRestore(){
+  document.getElementById('restoreBanner').style.display = 'none';
+  localStorage.removeItem('sc_progress');
+}
 
 </script>
 
