@@ -1354,12 +1354,28 @@ Write emails that make the prospect think: "They actually know my world."`;
         messages:   [{ role: 'user', content: usr }]
       })
     });
-    const data   = await resp.json();
+
+    const data = await resp.json();
+
+    // ── Log full API response for diagnosis ───────────────────
+    console.log(`[SC] Prospect ${idx+1} API response:`, resp.status, JSON.stringify(data).slice(0,300));
+
+    // ── Handle API-level errors ───────────────────────────────
+    if (!resp.ok) {
+      const errMsg = data.error || data.message || `HTTP ${resp.status}`;
+      console.error(`[SC] API error for prospect ${idx+1}:`, errMsg);
+      throw new Error(`API error: ${errMsg}`);
+    }
+
+    if (!data.content || !Array.isArray(data.content)) {
+      console.error(`[SC] No content in response for prospect ${idx+1}:`, data);
+      throw new Error(`No content returned: ${JSON.stringify(data).slice(0,200)}`);
+    }
+
     const raw    = data.content.map(b => b.text || '').join('');
     const parsed = robustParseJSON(raw);
-    if (!parsed) throw new Error('JSON parse failed');
+    if (!parsed) throw new Error('JSON parse failed — raw: ' + raw.slice(0,200));
 
-    // Attach real research intel to result
     allResults[idx] = {
       prospect:       p,
       _status:        'done',
@@ -1374,13 +1390,15 @@ Write emails that make the prospect think: "They actually know my world."`;
     trackSequenceGenerated(1);
 
   } catch(e) {
-    console.error('Generation failed for prospect', idx, e);
+    console.error(`[SC] Generation failed prospect ${idx+1}:`, e.message);
+    // Store the error message so we can show it in the UI
     allResults[idx] = {
-      prospect:      p,
-      _status:       'failed',
-      prospect_name: nameFromEmail(p.email),
-      research_intel:{ sources_used:[], signals:[], personalisation_hooks:[] },
-      emails:        [],
+      prospect:       p,
+      _status:        'failed',
+      _error:         e.message,
+      prospect_name:  nameFromEmail(p.email),
+      research_intel: { sources_used:[], signals:[], personalisation_hooks:[] },
+      emails:         [],
     };
   }
 }
@@ -1520,12 +1538,14 @@ function renderView(idx){
   // Emails
   const seq=document.getElementById('emailSequence');
   if(!result.emails||result.emails.length===0){
-    const isFailed = result._status === 'failed';
+    const isFailed   = result._status === 'failed';
+    const errorMsg   = result._error || '';
     seq.innerHTML=`
       <div style="text-align:center;padding:48px 24px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);">
         <div style="font-size:36px;margin-bottom:14px;">${isFailed ? '⚠️' : '⏳'}</div>
         <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;margin-bottom:8px;">${isFailed ? 'Generation failed' : 'Not generated yet'}</div>
-        <div style="color:var(--text2);font-size:13px;margin-bottom:24px;">${isFailed ? 'Something went wrong for this prospect.' : 'This prospect is queued and will generate shortly.'}</div>
+        <div style="color:var(--text2);font-size:13px;margin-bottom:${errorMsg ? '12px' : '24px'};">${isFailed ? 'Something went wrong for this prospect.' : 'This prospect is queued and will generate shortly.'}</div>
+        ${errorMsg ? `<div style="background:rgba(252,92,125,.08);border:1px solid rgba(252,92,125,.2);border-radius:8px;padding:10px 16px;font-size:11px;color:var(--accent2);font-family:monospace;margin-bottom:20px;text-align:left;word-break:break-all;">${errorMsg}</div>` : ''}
         ${isFailed ? `<button onclick="regenerateCurrent()" style="background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#fff;padding:12px 28px;border-radius:var(--radius-sm);cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;">↺ Retry This Prospect</button>` : ''}
       </div>`;
     return;
